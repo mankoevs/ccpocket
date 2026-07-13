@@ -24,6 +24,8 @@ Commands:
   version               Show the installed Bridge version
   doctor [--json]       Check the local Bridge environment
   setup [options]       Register Bridge as a macOS launchd or Linux systemd service
+  setup-funnel [options]
+                        Register Bridge and expose it through Tailscale Funnel
 
 Options:
   -h, --help            Show this help
@@ -74,7 +76,7 @@ if (parsed.helpRequested) {
       console.error("Doctor failed:", err);
       process.exit(1);
     });
-} else if (parsed.command === "setup") {
+} else if (parsed.command === "setup" || parsed.command === "setup-funnel") {
   // Service setup subcommand (platform-specific)
   const opts = {
     port: parseFlag(parsed, "port"),
@@ -88,34 +90,42 @@ if (parsed.helpRequested) {
     codexAppServerUrl: parseFlag(parsed, "codex-app-server-url"),
   };
 
-  if (platform() === "darwin") {
-    import("./setup-launchd.js")
-      .then(({ setupLaunchd, uninstallLaunchd }) => {
-        hasFlag(parsed, "uninstall")
-          ? uninstallLaunchd()
-          : setupLaunchd(opts);
-      })
-      .catch((err) => {
-        console.error("Setup failed:", err);
-        process.exit(1);
+  const runSetup = async () => {
+    if (parsed.command === "setup-funnel") {
+      if (hasFlag(parsed, "uninstall")) {
+        throw new Error(
+          "Use `tailscale funnel reset` before uninstalling the service",
+        );
+      }
+      const { prepareFunnelSetup } = await import("./setup-funnel.js");
+      const funnel = prepareFunnelSetup({
+        port: opts.port,
+        apiKey: opts.apiKey,
       });
-  } else if (platform() === "linux") {
-    import("./setup-systemd.js")
-      .then(({ setupSystemd, uninstallSystemd }) => {
-        hasFlag(parsed, "uninstall")
-          ? uninstallSystemd()
-          : setupSystemd(opts);
-      })
-      .catch((err) => {
-        console.error("Setup failed:", err);
-        process.exit(1);
-      });
-  } else {
-    console.error(
-      `ERROR: 'setup' is not supported on ${platform()}. Supported: macOS (launchd), Linux (systemd).`,
-    );
+      opts.port = funnel.port;
+      opts.apiKey = funnel.apiKey;
+      opts.publicWsUrl = funnel.publicWsUrl;
+    }
+
+    if (platform() === "darwin") {
+      const { setupLaunchd, uninstallLaunchd } =
+        await import("./setup-launchd.js");
+      hasFlag(parsed, "uninstall") ? uninstallLaunchd() : setupLaunchd(opts);
+    } else if (platform() === "linux") {
+      const { setupSystemd, uninstallSystemd } =
+        await import("./setup-systemd.js");
+      hasFlag(parsed, "uninstall") ? uninstallSystemd() : setupSystemd(opts);
+    } else {
+      throw new Error(
+        `'${parsed.command}' is not supported on ${platform()}. Supported: macOS (launchd), Linux (systemd).`,
+      );
+    }
+  };
+
+  runSetup().catch((err) => {
+    console.error("Setup failed:", err);
     process.exit(1);
-  }
+  });
 } else {
   // Configure global fetch proxy before any network calls
   setupProxy();

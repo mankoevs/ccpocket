@@ -25,6 +25,7 @@ const { setupLaunchd, uninstallLaunchd } = await import("./setup-launchd.js");
 const PLIST_PATH = "/Users/testuser/Library/LaunchAgents/com.ccpocket.bridge.plist";
 const originalBridgeEnv = {
   port: process.env.BRIDGE_PORT,
+  apiKey: process.env.BRIDGE_API_KEY,
   allowedDirs: process.env.BRIDGE_ALLOWED_DIRS,
   publicWsUrl: process.env.BRIDGE_PUBLIC_WS_URL,
   disableMdns: process.env.BRIDGE_DISABLE_MDNS,
@@ -182,6 +183,7 @@ describe("setup-launchd", () => {
 
 function clearBridgeEnv(): void {
   delete process.env.BRIDGE_PORT;
+  delete process.env.BRIDGE_API_KEY;
   delete process.env.BRIDGE_ALLOWED_DIRS;
   delete process.env.BRIDGE_PUBLIC_WS_URL;
   delete process.env.BRIDGE_DISABLE_MDNS;
@@ -193,6 +195,7 @@ function clearBridgeEnv(): void {
 
 function restoreBridgeEnv(): void {
   restoreEnvVar("BRIDGE_PORT", originalBridgeEnv.port);
+  restoreEnvVar("BRIDGE_API_KEY", originalBridgeEnv.apiKey);
   restoreEnvVar("BRIDGE_ALLOWED_DIRS", originalBridgeEnv.allowedDirs);
   restoreEnvVar("BRIDGE_PUBLIC_WS_URL", originalBridgeEnv.publicWsUrl);
   restoreEnvVar("BRIDGE_DISABLE_MDNS", originalBridgeEnv.disableMdns);
