@@ -870,6 +870,30 @@ abstract class AppLocalizations {
   /// **'チャット'**
   String get chats;
 
+  /// No description provided for @projects.
+  ///
+  /// In ja, this message translates to:
+  /// **'プロジェクト'**
+  String get projects;
+
+  /// No description provided for @pinProject.
+  ///
+  /// In ja, this message translates to:
+  /// **'プロジェクトを固定'**
+  String get pinProject;
+
+  /// No description provided for @unpinProject.
+  ///
+  /// In ja, this message translates to:
+  /// **'プロジェクトの固定を解除'**
+  String get unpinProject;
+
+  /// No description provided for @projectChats.
+  ///
+  /// In ja, this message translates to:
+  /// **'プロジェクトのチャット'**
+  String get projectChats;
+
   /// No description provided for @chatGroupToday.
   ///
   /// In ja, this message translates to:

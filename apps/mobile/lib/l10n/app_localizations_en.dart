@@ -419,6 +419,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chats => 'Chats';
 
   @override
+  String get projects => 'Projects';
+
+  @override
+  String get pinProject => 'Pin project';
+
+  @override
+  String get unpinProject => 'Unpin project';
+
+  @override
+  String get projectChats => 'Project chats';
+
+  @override
   String get chatGroupToday => 'Today';
 
   @override

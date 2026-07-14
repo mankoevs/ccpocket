@@ -740,9 +740,20 @@ class _SessionListScreenState extends State<SessionListScreen>
   }
 
   void _showNewSessionDialog() async {
-    final defaults = await _loadInitialNewSessionDefaults();
+    await _showNewSessionDialogForProject(null);
+  }
+
+  Future<void> _showNewSessionDialogForProject(String? projectPath) async {
+    final defaults = await _loadInitialNewSessionDefaults(
+      projectPath: projectPath,
+    );
     if (!mounted) return;
-    final result = await _openNewSessionSheet(initialParams: defaults);
+    final initialParams = projectPath == null
+        ? defaults
+        : (defaults ?? NewSessionParams(projectPath: projectPath)).copyWith(
+            projectPath: projectPath,
+          );
+    final result = await _openNewSessionSheet(initialParams: initialParams);
     if (result == null || !mounted) return;
     await _saveSessionStartDefaults(result);
     _trackPendingClaudeDefaultsCorrection(result);
@@ -985,7 +996,9 @@ class _SessionListScreenState extends State<SessionListScreen>
     );
   }
 
-  Future<NewSessionParams?> _loadInitialNewSessionDefaults() async {
+  Future<NewSessionParams?> _loadInitialNewSessionDefaults({
+    String? projectPath,
+  }) async {
     final defaults = await _loadSessionStartDefaults();
     final codexDefaults = await _loadSessionStartDefaults(
       provider: Provider.codex,
@@ -995,19 +1008,22 @@ class _SessionListScreenState extends State<SessionListScreen>
       codexDefaults,
     );
     if (mergedDefaults == null) return null;
-    if (mergedDefaults.provider != Provider.codex) {
-      return mergedDefaults;
+    final projectDefaults = projectPath == null
+        ? mergedDefaults
+        : mergedDefaults.copyWith(projectPath: projectPath);
+    if (projectDefaults.provider != Provider.codex) {
+      return projectDefaults;
     }
     final savedProfile = await _loadProjectCodexProfile(
-      mergedDefaults.projectPath,
+      projectDefaults.projectPath,
     );
-    if (savedProfile == null || savedProfile.isEmpty) return mergedDefaults;
-    if (!mounted) return mergedDefaults;
+    if (savedProfile == null || savedProfile.isEmpty) return projectDefaults;
+    if (!mounted) return projectDefaults;
     final available = context.read<BridgeService>().codexProfiles;
     if (available.isNotEmpty && !available.contains(savedProfile)) {
-      return mergedDefaults;
+      return projectDefaults;
     }
-    return mergedDefaults.copyWith(codexProfile: savedProfile);
+    return projectDefaults.copyWith(codexProfile: savedProfile);
   }
 
   Future<Map<String, String>> _loadCodexProfilesByProject() async {
@@ -2012,6 +2028,8 @@ class _SessionListScreenState extends State<SessionListScreen>
               unseenSessionIds: unseenSessionIds,
               currentProjectFilter: bridge.currentProjectFilter,
               onNewSession: _showNewSessionDialog,
+              onNewSessionForProject: (path) =>
+                  unawaited(_showNewSessionDialogForProject(path)),
               onTapRunning:
                   (
                     sessionId, {

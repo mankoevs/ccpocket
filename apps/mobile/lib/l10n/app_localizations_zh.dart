@@ -409,6 +409,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get chats => '聊天';
 
   @override
+  String get projects => '项目';
+
+  @override
+  String get pinProject => '置顶项目';
+
+  @override
+  String get unpinProject => '取消置顶项目';
+
+  @override
+  String get projectChats => '项目聊天';
+
+  @override
   String get chatGroupToday => '今天';
 
   @override

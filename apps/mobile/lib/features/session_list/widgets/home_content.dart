@@ -2,6 +2,7 @@ import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../../constants/app_constants.dart';
@@ -32,6 +33,8 @@ import 'support_banner.dart';
 
 enum _SessionDateGroup { today, yesterday, earlier }
 
+enum _SessionListView { chats, projects }
+
 class _ChatListEntry {
   final SessionInfo? runningSession;
   final RecentSession? recentSession;
@@ -42,6 +45,21 @@ class _ChatListEntry {
 
   const _ChatListEntry.recent(this.recentSession, this.timestamp)
     : runningSession = null;
+
+  String get projectPath =>
+      runningSession?.projectPath ?? recentSession!.projectPath;
+}
+
+class _ProjectListEntry {
+  final String path;
+  final DateTime latestTimestamp;
+  final List<_ChatListEntry> chats;
+
+  const _ProjectListEntry({
+    required this.path,
+    required this.latestTimestamp,
+    required this.chats,
+  });
 }
 
 DateTime _sessionTimestamp(String preferred, String fallback) {
@@ -80,6 +98,7 @@ class HomeContent extends StatefulWidget {
   final Set<String> unseenSessionIds;
   final String? currentProjectFilter;
   final VoidCallback onNewSession;
+  final ValueChanged<String>? onNewSessionForProject;
   final void Function(
     String sessionId, {
     String? projectPath,
@@ -146,6 +165,7 @@ class HomeContent extends StatefulWidget {
     this.unseenSessionIds = const {},
     required this.currentProjectFilter,
     required this.onNewSession,
+    this.onNewSessionForProject,
     required this.onTapRunning,
     required this.onStopSession,
     this.onCancelOfflinePendingAction,
@@ -181,12 +201,18 @@ class HomeContent extends StatefulWidget {
 }
 
 class HomeContentState extends State<HomeContent> {
+  static const _listViewPreferenceKey = 'session_list_view';
+  static const _pinnedProjectsPreferenceKey = 'session_list_pinned_projects';
+
   bool _isSearching = false;
   bool _updateBannerDismissed = false;
   bool _showSupportBanner = false;
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
   bool _loadMoreRequested = false;
+  _SessionListView _listView = _SessionListView.chats;
+  Set<String> _pinnedProjects = {};
+  final Set<String> _expandedProjects = {};
   RevenueCatService? _revenueCatService;
   VoidCallback? _catalogStateListener;
   SupportBannerService? _supportBannerService;
@@ -197,6 +223,56 @@ class HomeContentState extends State<HomeContent> {
     super.initState();
     _scrollController.addListener(_maybeLoadMore);
     _scheduleLoadMoreCheck();
+    _loadListPreferences();
+  }
+
+  Future<void> _loadListPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedView = prefs.getString(_listViewPreferenceKey);
+    final pinned =
+        prefs.getStringList(_pinnedProjectsPreferenceKey) ?? const [];
+    if (!mounted) return;
+    setState(() {
+      _listView = savedView == _SessionListView.projects.name
+          ? _SessionListView.projects
+          : _SessionListView.chats;
+      _pinnedProjects = pinned.toSet();
+    });
+  }
+
+  Future<void> _setListView(_SessionListView value) async {
+    if (_listView == value) return;
+    setState(() => _listView = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_listViewPreferenceKey, value.name);
+  }
+
+  Future<void> _togglePinnedProject(String path) async {
+    final next = {..._pinnedProjects};
+    if (!next.remove(path)) next.add(path);
+    setState(() => _pinnedProjects = next);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_pinnedProjectsPreferenceKey, next.toList());
+  }
+
+  void _toggleExpandedProject(String path) {
+    var didExpand = false;
+    setState(() {
+      if (!_expandedProjects.remove(path)) {
+        _expandedProjects.add(path);
+        didExpand = true;
+      }
+    });
+    if (didExpand) widget.onLoadMoreProject?.call(path);
+  }
+
+  void _openNewSessionForProject(String path) {
+    final callback = widget.onNewSessionForProject;
+    if (callback != null) {
+      callback(path);
+    } else {
+      widget.onNewSession();
+    }
   }
 
   void _scheduleLoadMoreCheck() {
@@ -586,6 +662,32 @@ class HomeContentState extends State<HomeContent> {
                   .toList(),
           }
         : dateGroups;
+    final chatsByProject = <String, List<_ChatListEntry>>{
+      for (final path in widget.accumulatedProjectPaths)
+        if (path.isNotEmpty) path: [],
+    };
+    for (final entry in chatEntries) {
+      chatsByProject.putIfAbsent(entry.projectPath, () => []).add(entry);
+    }
+    final projectEntries =
+        [
+          for (final MapEntry(key: path, value: projectChats)
+              in chatsByProject.entries)
+            _ProjectListEntry(
+              path: path,
+              latestTimestamp: projectChats.isEmpty
+                  ? DateTime.fromMillisecondsSinceEpoch(0)
+                  : projectChats.first.timestamp,
+              chats: projectChats,
+            ),
+        ]..sort((a, b) {
+          final aPinned = _pinnedProjects.contains(a.path);
+          final bPinned = _pinnedProjects.contains(b.path);
+          if (aPinned != bPinned) return aPinned ? -1 : 1;
+          final byDate = b.latestTimestamp.compareTo(a.latestTimestamp);
+          if (byDate != 0) return byDate;
+          return pathBasename(a.path).compareTo(pathBasename(b.path));
+        });
 
     final hasActiveFilter =
         widget.currentProjectFilter != null ||
@@ -611,12 +713,24 @@ class HomeContentState extends State<HomeContent> {
             ?appUpdateBanner,
             ?macOSNativeAppBanner,
             SectionHeader(
-              icon: Icons.history,
-              label: l.chats,
+              icon: _listView == _SessionListView.chats
+                  ? Icons.chat_bubble_outline
+                  : Icons.folder_outlined,
+              label: _listView == _SessionListView.chats ? l.chats : l.projects,
               color: appColors.subtleText,
             ),
             const SizedBox(height: 8),
-            const _SessionListSkeleton(),
+            _ListViewSwitch(
+              selected: _listView,
+              chatsLabel: l.chats,
+              projectsLabel: l.projects,
+              onSelected: _setListView,
+            ),
+            const SizedBox(height: 8),
+            if (_listView == _SessionListView.chats)
+              const _SessionListSkeleton()
+            else
+              const _ProjectListSkeleton(),
           ],
         );
       }
@@ -666,8 +780,10 @@ class HomeContentState extends State<HomeContent> {
             hasKnownProjects ||
             hasActiveFilter) ...[
           SectionHeader(
-            icon: Icons.chat_bubble_outline,
-            label: l.chats,
+            icon: _listView == _SessionListView.chats
+                ? Icons.chat_bubble_outline
+                : Icons.folder_outlined,
+            label: _listView == _SessionListView.chats ? l.chats : l.projects,
             color: appColors.subtleText,
             trailing: IconButton(
               key: const ValueKey('search_button'),
@@ -682,6 +798,13 @@ class HomeContentState extends State<HomeContent> {
               constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               visualDensity: VisualDensity.compact,
             ),
+          ),
+          const SizedBox(height: 8),
+          _ListViewSwitch(
+            selected: _listView,
+            chatsLabel: l.chats,
+            projectsLabel: l.projects,
+            onSelected: _setListView,
           ),
           if (_isSearching) ...[
             const SizedBox(height: 4),
@@ -733,42 +856,92 @@ class HomeContentState extends State<HomeContent> {
             onToggleNamed: widget.onToggleNamed,
           ),
           const SizedBox(height: 8),
-          if (!widget.isInitialLoading && chatEntries.isEmpty)
+          if (_listView == _SessionListView.chats &&
+              !widget.isInitialLoading &&
+              chatEntries.isEmpty)
             _RecentSessionsEmptyResult(
               title: hasActiveFilter
                   ? l.noSessionsMatchFilters
                   : l.noRecentSessions,
               subtitle: hasActiveFilter ? l.adjustFiltersAndSearch : null,
             ),
-          for (final group in _SessionDateGroup.values)
-            if (displayedDateGroups[group]!.isNotEmpty) ...[
-              _DateGroupHeader(
-                label: switch (group) {
-                  _SessionDateGroup.today => l.chatGroupToday,
-                  _SessionDateGroup.yesterday => l.chatGroupYesterday,
-                  _SessionDateGroup.earlier => l.chatGroupEarlier,
-                },
+          if (_listView == _SessionListView.chats)
+            for (final group in _SessionDateGroup.values)
+              if (displayedDateGroups[group]!.isNotEmpty) ...[
+                _DateGroupHeader(
+                  label: switch (group) {
+                    _SessionDateGroup.today => l.chatGroupToday,
+                    _SessionDateGroup.yesterday => l.chatGroupYesterday,
+                    _SessionDateGroup.earlier => l.chatGroupEarlier,
+                  },
+                ),
+                for (final entry in displayedDateGroups[group]!)
+                  if (entry.runningSession != null)
+                    _buildRunningSessionRow(
+                      context,
+                      entry.runningSession!,
+                      selectedSessionId: selectedSessionId,
+                      selectedSessionProvider: selectedSessionProvider,
+                      showInlineStopButton: showInlineStopButton,
+                    )
+                  else
+                    _RecentSessionSlidable(
+                      session: entry.recentSession!,
+                      archivingSessionIds: widget.archivingSessionIds,
+                      onArchiveSession: widget.onArchiveSession,
+                      onResumeSession: widget.onResumeSession,
+                      onLongPressRecentSession: widget.onLongPressRecentSession,
+                    ),
+              ],
+          if (_listView == _SessionListView.projects)
+            for (final project in projectEntries) ...[
+              _ProjectRow(
+                path: project.path,
+                isPinned: _pinnedProjects.contains(project.path),
+                isExpanded: _expandedProjects.contains(project.path),
+                onOpen: () => _openNewSessionForProject(project.path),
+                onTogglePinned: () => _togglePinnedProject(project.path),
+                onToggleExpanded: () => _toggleExpandedProject(project.path),
               ),
-              for (final entry in displayedDateGroups[group]!)
-                if (entry.runningSession != null)
-                  _buildRunningSessionRow(
-                    context,
-                    entry.runningSession!,
-                    selectedSessionId: selectedSessionId,
-                    selectedSessionProvider: selectedSessionProvider,
-                    showInlineStopButton: showInlineStopButton,
+              if (_expandedProjects.contains(project.path))
+                if (project.chats.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 6, 8, 10),
+                    child: Text(
+                      l.noRecentSessions,
+                      style: TextStyle(
+                        color: appColors.subtleText,
+                        fontSize: 12,
+                      ),
+                    ),
                   )
                 else
-                  _RecentSessionSlidable(
-                    session: entry.recentSession!,
-                    archivingSessionIds: widget.archivingSessionIds,
-                    onArchiveSession: widget.onArchiveSession,
-                    onResumeSession: widget.onResumeSession,
-                    onLongPressRecentSession: widget.onLongPressRecentSession,
-                  ),
+                  for (final entry in project.chats)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16),
+                      child: entry.runningSession != null
+                          ? _buildRunningSessionRow(
+                              context,
+                              entry.runningSession!,
+                              selectedSessionId: selectedSessionId,
+                              selectedSessionProvider: selectedSessionProvider,
+                              showInlineStopButton: showInlineStopButton,
+                            )
+                          : _RecentSessionSlidable(
+                              session: entry.recentSession!,
+                              archivingSessionIds: widget.archivingSessionIds,
+                              onArchiveSession: widget.onArchiveSession,
+                              onResumeSession: widget.onResumeSession,
+                              onLongPressRecentSession:
+                                  widget.onLongPressRecentSession,
+                            ),
+                    ),
             ],
           if (widget.isInitialLoading)
-            const _SessionListSkeleton()
+            if (_listView == _SessionListView.chats)
+              const _SessionListSkeleton()
+            else
+              const _ProjectListSkeleton()
           else if (widget.isLoadingMore) ...[
             const SizedBox(height: 8),
             const Center(
@@ -785,6 +958,141 @@ class HomeContentState extends State<HomeContent> {
           ],
         ],
       ],
+    );
+  }
+}
+
+class _ListViewSwitch extends StatelessWidget {
+  final _SessionListView selected;
+  final String chatsLabel;
+  final String projectsLabel;
+  final ValueChanged<_SessionListView> onSelected;
+
+  const _ListViewSwitch({
+    required this.selected,
+    required this.chatsLabel,
+    required this.projectsLabel,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    Widget option(_SessionListView value, IconData icon, String label) {
+      final isSelected = selected == value;
+      return Expanded(
+        child: Material(
+          color: isSelected
+              ? colors.primaryContainer
+              : colors.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(9),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            key: ValueKey('session_list_view_${value.name}'),
+            onTap: () => onSelected(value),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        option(_SessionListView.chats, Icons.chat_bubble_outline, chatsLabel),
+        const SizedBox(width: 8),
+        option(_SessionListView.projects, Icons.folder_outlined, projectsLabel),
+      ],
+    );
+  }
+}
+
+class _ProjectRow extends StatelessWidget {
+  final String path;
+  final bool isPinned;
+  final bool isExpanded;
+  final VoidCallback onOpen;
+  final VoidCallback onTogglePinned;
+  final VoidCallback onToggleExpanded;
+
+  const _ProjectRow({
+    required this.path,
+    required this.isPinned,
+    required this.isExpanded,
+    required this.onOpen,
+    required this.onTogglePinned,
+    required this.onToggleExpanded,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context);
+    return Card(
+      key: ValueKey('project_row_$path'),
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      elevation: 0,
+      color: colors.surfaceContainerHigh,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        children: [
+          IconButton(
+            key: ValueKey('project_pin_$path'),
+            onPressed: onTogglePinned,
+            tooltip: isPinned ? l.unpinProject : l.pinProject,
+            visualDensity: VisualDensity.compact,
+            icon: Icon(
+              isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+              size: 18,
+              color: isPinned ? colors.primary : colors.onSurfaceVariant,
+            ),
+          ),
+          Expanded(
+            child: InkWell(
+              key: ValueKey('project_open_$path'),
+              onTap: onOpen,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                child: Text(
+                  pathBasename(path),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            key: ValueKey('project_expand_$path'),
+            onPressed: onToggleExpanded,
+            tooltip: l.projectChats,
+            visualDensity: VisualDensity.compact,
+            icon: Icon(
+              isExpanded ? Icons.expand_less : Icons.expand_more,
+              size: 22,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1141,6 +1449,41 @@ class _SessionListSkeleton extends StatelessWidget {
         children: [
           for (final session in _dummySessions)
             RecentSessionCard(session: session, onTap: () {}),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProjectListSkeleton extends StatelessWidget {
+  const _ProjectListSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Skeletonizer(
+      child: Column(
+        children: [
+          for (final name in const [
+            'mobile-app',
+            'backend',
+            'website',
+            'automation',
+            'documentation',
+          ])
+            Card(
+              margin: const EdgeInsets.symmetric(vertical: 2),
+              elevation: 0,
+              child: ListTile(
+                dense: true,
+                leading: const Icon(Icons.push_pin_outlined, size: 18),
+                title: Text(
+                  name,
+                  maxLines: 1,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                trailing: const Icon(Icons.expand_more, size: 22),
+              ),
+            ),
         ],
       ),
     );

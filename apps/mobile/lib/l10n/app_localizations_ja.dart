@@ -413,6 +413,18 @@ class AppLocalizationsJa extends AppLocalizations {
   String get chats => 'チャット';
 
   @override
+  String get projects => 'プロジェクト';
+
+  @override
+  String get pinProject => 'プロジェクトを固定';
+
+  @override
+  String get unpinProject => 'プロジェクトの固定を解除';
+
+  @override
+  String get projectChats => 'プロジェクトのチャット';
+
+  @override
   String get chatGroupToday => '今日';
 
   @override

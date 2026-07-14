@@ -93,6 +93,7 @@ Widget _buildHomeContent({
   List<SessionInfo> sessions = const [],
   List<OfflinePendingAction> offlinePendingActions = const [],
   List<RecentSession> recentSessions = const [],
+  Set<String> accumulatedProjectPaths = const {},
   Set<String> exhaustedProjectPaths = const {},
   Map<String, int> projectSessionDisplayLimits = const {},
   String? currentProjectFilter,
@@ -101,6 +102,7 @@ Widget _buildHomeContent({
   bool showMacOSNativeAppBanner = false,
   VoidCallback? onDismissMacOSNativeAppBanner,
   VoidCallback? onLoadMore,
+  ValueChanged<String>? onNewSessionForProject,
   required SessionListCubit cubit,
   required DraftService draftService,
   required RevenueCatService revenueCatService,
@@ -127,7 +129,7 @@ Widget _buildHomeContent({
             sessions: sessions,
             offlinePendingActions: offlinePendingActions,
             recentSessions: recentSessions,
-            accumulatedProjectPaths: const {},
+            accumulatedProjectPaths: accumulatedProjectPaths,
             exhaustedProjectPaths: exhaustedProjectPaths,
             projectSessionDisplayLimits: projectSessionDisplayLimits,
             searchQuery: '',
@@ -136,6 +138,7 @@ Widget _buildHomeContent({
             hasMoreSessions: hasMoreSessions,
             currentProjectFilter: currentProjectFilter,
             onNewSession: () {},
+            onNewSessionForProject: onNewSessionForProject,
             onTapRunning:
                 (
                   id, {
@@ -219,7 +222,7 @@ void main() {
       // Skeletonizer internally renders as _Skeletonizer + SkeletonizerScope.
       // Use SkeletonizerScope to detect presence.
       expect(find.byType(SkeletonizerScope), findsOneWidget);
-      expect(find.text('Chats'), findsOneWidget);
+      expect(find.text('Chats'), findsAtLeast(1));
     });
 
     testWidgets('shows empty state when isInitialLoading is false and '
@@ -425,6 +428,117 @@ void main() {
       expect(loadMoreCalls, 1);
     });
 
+    testWidgets('project view sorts by latest chat and expands project chats', (
+      tester,
+    ) async {
+      String? openedProject;
+      final projectA = _session(
+        id: 'project-a-chat',
+        projectPath: '/work/project-a',
+      );
+      final projectB = RecentSession(
+        sessionId: 'project-b-chat',
+        firstPrompt: 'Newest project chat',
+        created: '2025-01-03T00:00:00Z',
+        modified: '2025-01-03T00:00:00Z',
+        gitBranch: 'main',
+        projectPath: '/work/project-b',
+        isSidechain: false,
+      );
+
+      await tester.pumpWidget(
+        _buildHomeContent(
+          recentSessions: [projectA, projectB],
+          accumulatedProjectPaths: const {'/work/project-a', '/work/project-b'},
+          onNewSessionForProject: (path) => openedProject = path,
+          isInitialLoading: false,
+          cubit: cubit,
+          draftService: draftService,
+          revenueCatService: revenueCatService,
+          supportBannerService: supportBannerService,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('session_list_view_projects')),
+      );
+      await tester.pumpAndSettle();
+
+      final projectARow = find.byKey(
+        const ValueKey('project_row_/work/project-a'),
+      );
+      final projectBRow = find.byKey(
+        const ValueKey('project_row_/work/project-b'),
+      );
+      expect(projectARow, findsOneWidget);
+      expect(projectBRow, findsOneWidget);
+      expect(
+        tester.getTopLeft(projectBRow).dy,
+        lessThan(tester.getTopLeft(projectARow).dy),
+      );
+      expect(find.text('Newest project chat'), findsNothing);
+
+      await tester.tap(
+        find.byKey(const ValueKey('project_expand_/work/project-b')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Newest project chat'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey('project_open_/work/project-b')),
+      );
+      expect(openedProject, '/work/project-b');
+    });
+
+    testWidgets('pinned project moves first and persists', (tester) async {
+      await tester.pumpWidget(
+        _buildHomeContent(
+          recentSessions: [
+            _session(id: 'older', projectPath: '/work/older-project'),
+            RecentSession(
+              sessionId: 'newer',
+              firstPrompt: 'Newer',
+              created: '2025-01-03T00:00:00Z',
+              modified: '2025-01-03T00:00:00Z',
+              gitBranch: 'main',
+              projectPath: '/work/newer-project',
+              isSidechain: false,
+            ),
+          ],
+          isInitialLoading: false,
+          cubit: cubit,
+          draftService: draftService,
+          revenueCatService: revenueCatService,
+          supportBannerService: supportBannerService,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('session_list_view_projects')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('project_pin_/work/older-project')),
+      );
+      await tester.pumpAndSettle();
+
+      final older = find.byKey(
+        const ValueKey('project_row_/work/older-project'),
+      );
+      final newer = find.byKey(
+        const ValueKey('project_row_/work/newer-project'),
+      );
+      expect(
+        tester.getTopLeft(older).dy,
+        lessThan(tester.getTopLeft(newer).dy),
+      );
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.getStringList('session_list_pinned_projects'),
+        contains('/work/older-project'),
+      );
+    });
+
     testWidgets('shows skeleton below running sessions when '
         'isInitialLoading is true', (tester) async {
       await tester.pumpWidget(
@@ -444,7 +558,7 @@ void main() {
       expect(find.byKey(const ValueKey('running_session_r1')), findsOneWidget);
       // Skeleton should show for recent sessions section
       expect(find.byType(SkeletonizerScope), findsOneWidget);
-      expect(find.text('Chats'), findsOneWidget);
+      expect(find.text('Chats'), findsAtLeast(1));
     });
 
     testWidgets('shows real recent sessions (not skeleton) below running '
@@ -497,7 +611,7 @@ void main() {
         );
         await tester.pump();
 
-        expect(find.text('Chats'), findsOneWidget);
+        expect(find.text('Chats'), findsAtLeast(1));
         expect(find.text('Resume pending'), findsOneWidget);
         expect(find.text('test prompt for s1'), findsNothing);
         expect(find.text('test prompt for s2'), findsOneWidget);

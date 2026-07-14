@@ -414,6 +414,18 @@ class AppLocalizationsKo extends AppLocalizations {
   String get chats => '채팅';
 
   @override
+  String get projects => '프로젝트';
+
+  @override
+  String get pinProject => '프로젝트 고정';
+
+  @override
+  String get unpinProject => '프로젝트 고정 해제';
+
+  @override
+  String get projectChats => '프로젝트 채팅';
+
+  @override
   String get chatGroupToday => '오늘';
 
   @override
