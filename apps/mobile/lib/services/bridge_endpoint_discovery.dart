@@ -3,9 +3,12 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../core/logger.dart';
+
 class BridgeEndpointDiscovery {
   static const _registryUrl =
-      'https://api.github.com/gists/d8154455bb0fa966be69102c571532c6';
+      'https://gist.githubusercontent.com/mankoevs/'
+      'd8154455bb0fa966be69102c571532c6/raw/ccpocket-bridge.json';
 
   static bool manages(String wsUrl) {
     final host = Uri.tryParse(wsUrl)?.host.toLowerCase();
@@ -40,7 +43,12 @@ class BridgeEndpointDiscovery {
             },
           )
           .timeout(timeout);
-      if (response.statusCode != 200) return savedUrl;
+      if (response.statusCode != 200) {
+        logger.warning(
+          '[bridge-discovery] Registry returned ${response.statusCode}',
+        );
+        return savedUrl;
+      }
 
       final responsePayload = jsonDecode(response.body);
       final payload = _readDiscoveryPayload(responsePayload);
@@ -59,19 +67,49 @@ class BridgeEndpointDiscovery {
             !manages(value)) {
           continue;
         }
-        final candidate = uri.replace(
-          queryParameters: savedUri.queryParameters,
-        );
+        final candidate = savedUri.hasQuery
+            ? uri.replace(queryParameters: savedUri.queryParameters)
+            : uri;
         if (!candidates.contains(candidate.toString())) {
           candidates.add(candidate.toString());
         }
       }
       return await _firstHealthy(candidates, httpClient, timeout) ?? savedUrl;
-    } catch (_) {
+    } catch (error) {
+      logger.warning('[bridge-discovery] Registry lookup failed', error);
       return savedUrl;
     } finally {
       if (ownClient) httpClient.close();
     }
+  }
+
+  static Future<String> resolveHttpBaseUrl(
+    String savedHttpBaseUrl, {
+    http.Client? client,
+    Uri? registryUri,
+    Duration timeout = const Duration(seconds: 4),
+  }) async {
+    final uri = Uri.tryParse(savedHttpBaseUrl);
+    if (uri == null) return savedHttpBaseUrl;
+
+    final wsUrl = uri
+        .replace(scheme: uri.scheme == 'https' ? 'wss' : 'ws')
+        .toString();
+    final resolvedWsUrl = await resolve(
+      wsUrl,
+      client: client,
+      registryUri: registryUri,
+      timeout: timeout,
+    );
+    final resolvedUri = Uri.tryParse(resolvedWsUrl);
+    if (resolvedUri == null) return savedHttpBaseUrl;
+
+    return Uri(
+      scheme: resolvedUri.scheme == 'wss' ? 'https' : 'http',
+      host: resolvedUri.host,
+      port: resolvedUri.hasPort ? resolvedUri.port : null,
+      path: resolvedUri.path,
+    ).toString();
   }
 
   static dynamic _readDiscoveryPayload(dynamic responsePayload) {
@@ -98,16 +136,24 @@ class BridgeEndpointDiscovery {
       () async {
         try {
           final wsUri = Uri.parse(candidate);
-          final healthUri = wsUri.replace(
+          final healthUri = Uri(
             scheme: 'https',
+            host: wsUri.host,
+            port: wsUri.hasPort ? wsUri.port : null,
             path: '/health',
-            queryParameters: const {},
           );
           final response = await client.get(healthUri).timeout(timeout);
+          logger.info(
+            '[bridge-discovery] Health ${wsUri.host}: ${response.statusCode}',
+          );
           if (response.statusCode == 200 && !result.isCompleted) {
             result.complete(candidate);
           }
-        } catch (_) {
+        } catch (error) {
+          logger.warning(
+            '[bridge-discovery] Health ${Uri.parse(candidate).host} failed',
+            error,
+          );
           // Try the remaining public route.
         } finally {
           remaining--;

@@ -15,6 +15,7 @@ void main() {
         );
       }
       if (request.url.host == 'backup.trycloudflare.com') {
+        expect(request.url.hasQuery, isFalse);
         return http.Response('{"status":"ok"}', 200);
       }
       return http.Response('', 503);
@@ -43,6 +44,31 @@ void main() {
 
     expect(result, 'wss://other.example.com?token=secret');
     expect(requested, isFalse);
+  });
+
+  test('resolves an HTTP health-check base URL through discovery', () async {
+    final registry = Uri.parse('https://registry.example/discovery.json');
+    final client = MockClient((request) async {
+      if (request.url == registry) {
+        return http.Response(
+          '{"endpoints":["wss://fresh.trycloudflare.com"]}',
+          200,
+        );
+      }
+      if (request.url.host == 'fresh.trycloudflare.com' &&
+          request.url.path == '/health') {
+        return http.Response('{"status":"ok"}', 200);
+      }
+      return http.Response('unavailable', 503);
+    });
+
+    final result = await BridgeEndpointDiscovery.resolveHttpBaseUrl(
+      'https://macbook-air-5.tail9af04f.ts.net',
+      client: client,
+      registryUri: registry,
+    );
+
+    expect(result, 'https://fresh.trycloudflare.com');
   });
 
   test('never forwards authentication to an untrusted registry host', () async {

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:dartssh2/dartssh2.dart';
 
 import '../models/machine.dart';
+import 'bridge_endpoint_discovery.dart';
 import 'machine_manager_service.dart';
 
 /// Maintains local TCP forwards for Bridge HTTP/WebSocket traffic that must
@@ -30,8 +31,10 @@ class SshBridgeTunnelService {
       password: password,
       promptForPassword: promptForPassword,
     );
-    if (tunnel == null) return machine.wsUrl;
-    return '${machine.useSsl ? 'wss' : 'ws'}://127.0.0.1:${tunnel.localPort}';
+    final url = tunnel == null
+        ? machine.wsUrl
+        : '${machine.useSsl ? 'wss' : 'ws'}://127.0.0.1:${tunnel.localPort}';
+    return BridgeEndpointDiscovery.resolve(url);
   }
 
   Future<String> buildHttpBaseUrl(
@@ -44,8 +47,10 @@ class SshBridgeTunnelService {
       password: password,
       promptForPassword: promptForPassword,
     );
-    if (tunnel == null) return machine.httpUrl;
-    return '${machine.useSsl ? 'https' : 'http'}://127.0.0.1:${tunnel.localPort}';
+    final url = tunnel == null
+        ? machine.httpUrl
+        : '${machine.useSsl ? 'https' : 'http'}://127.0.0.1:${tunnel.localPort}';
+    return BridgeEndpointDiscovery.resolveHttpBaseUrl(url);
   }
 
   Future<void> closeForMachine(String machineId) async {
