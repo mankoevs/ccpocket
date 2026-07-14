@@ -141,6 +141,10 @@ void main() {
       expect(find.text('feat/voice'), findsNothing);
       expect(find.text('gpt-5.4'), findsNothing);
       expect(find.text('my-app'), findsNothing);
+      final timestamp = tester.widget<Text>(
+        find.byKey(const ValueKey('compact_session_timestamp')),
+      );
+      expect(timestamp.data, matches(RegExp(r'^\d{2}:\d{2}$')));
     });
 
     testWidgets('compact idle chat has no working marker', (tester) async {
@@ -1099,8 +1103,8 @@ void main() {
         sessionId: 'compact-recent',
         name: 'Tailscale setup',
         firstPrompt: 'Configure a remote connection',
-        created: DateTime.now().toIso8601String(),
-        modified: DateTime.now().toIso8601String(),
+        created: '2025-07-14T12:34:00Z',
+        modified: '2025-07-14T12:34:00Z',
         gitBranch: 'main',
         projectPath: '/home/user/my-app',
         isSidechain: false,
@@ -1114,6 +1118,7 @@ void main() {
       expect(find.text('Configure a remote connection'), findsNothing);
       expect(find.text('main'), findsNothing);
       expect(find.text('my-app'), findsNothing);
+      expect(find.text('14.07'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('compact_session_working')),
         findsNothing,

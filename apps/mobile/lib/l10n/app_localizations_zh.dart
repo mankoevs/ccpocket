@@ -406,6 +406,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get running => '进行中';
 
   @override
+  String get chats => '聊天';
+
+  @override
+  String get chatGroupToday => '今天';
+
+  @override
+  String get chatGroupYesterday => '昨天';
+
+  @override
+  String get chatGroupEarlier => '更早';
+
+  @override
   String get recentSessions => '最近会话';
 
   @override

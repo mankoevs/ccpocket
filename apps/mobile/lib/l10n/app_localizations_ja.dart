@@ -410,6 +410,18 @@ class AppLocalizationsJa extends AppLocalizations {
   String get running => '実行中';
 
   @override
+  String get chats => 'チャット';
+
+  @override
+  String get chatGroupToday => '今日';
+
+  @override
+  String get chatGroupYesterday => '昨日';
+
+  @override
+  String get chatGroupEarlier => '以前';
+
+  @override
   String get recentSessions => '最近のセッション';
 
   @override

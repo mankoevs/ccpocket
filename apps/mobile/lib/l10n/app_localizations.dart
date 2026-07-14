@@ -864,6 +864,30 @@ abstract class AppLocalizations {
   /// **'実行中'**
   String get running;
 
+  /// No description provided for @chats.
+  ///
+  /// In ja, this message translates to:
+  /// **'チャット'**
+  String get chats;
+
+  /// No description provided for @chatGroupToday.
+  ///
+  /// In ja, this message translates to:
+  /// **'今日'**
+  String get chatGroupToday;
+
+  /// No description provided for @chatGroupYesterday.
+  ///
+  /// In ja, this message translates to:
+  /// **'昨日'**
+  String get chatGroupYesterday;
+
+  /// No description provided for @chatGroupEarlier.
+  ///
+  /// In ja, this message translates to:
+  /// **'以前'**
+  String get chatGroupEarlier;
+
   /// No description provided for @recentSessions.
   ///
   /// In ja, this message translates to:

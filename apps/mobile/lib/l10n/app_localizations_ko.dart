@@ -411,6 +411,18 @@ class AppLocalizationsKo extends AppLocalizations {
   String get running => '실행 중';
 
   @override
+  String get chats => '채팅';
+
+  @override
+  String get chatGroupToday => '오늘';
+
+  @override
+  String get chatGroupYesterday => '어제';
+
+  @override
+  String get chatGroupEarlier => '이전';
+
+  @override
   String get recentSessions => '최근 세션';
 
   @override

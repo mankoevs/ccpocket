@@ -118,6 +118,10 @@ class _RunningSessionCardState extends State<RunningSessionCard> {
           : session.id;
       final row = _CompactSessionRow(
         title: title,
+        trailing: _compactSessionTimestamp(
+          session.lastActivityAt,
+          session.createdAt,
+        ),
         isWorking: visualStatus.primary == SessionPrimaryStatus.working,
         workingColor: appColors.statusRunning,
         isSelected: widget.isSelected,
@@ -2490,6 +2494,7 @@ class RecentSessionCard extends StatelessWidget {
           : session.sessionId;
       final row = _CompactSessionRow(
         title: title,
+        trailing: _compactSessionTimestamp(session.modified, session.created),
         isWorking: false,
         workingColor: appColors.statusRunning,
         isSelected: isSelected,
@@ -2814,6 +2819,7 @@ class RecentSessionCard extends StatelessWidget {
 
 class _CompactSessionRow extends StatelessWidget {
   final String title;
+  final String trailing;
   final bool isWorking;
   final Color workingColor;
   final bool isSelected;
@@ -2822,6 +2828,7 @@ class _CompactSessionRow extends StatelessWidget {
 
   const _CompactSessionRow({
     required this.title,
+    required this.trailing,
     required this.isWorking,
     required this.workingColor,
     required this.isSelected,
@@ -2900,12 +2907,44 @@ class _CompactSessionRow extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               ],
+              if (trailing.isNotEmpty) ...[
+                const SizedBox(width: 10),
+                Text(
+                  trailing,
+                  key: const ValueKey('compact_session_timestamp'),
+                  maxLines: 1,
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
       ),
     );
   }
+}
+
+String _compactSessionTimestamp(String preferred, String fallback) {
+  final raw = preferred.isNotEmpty ? preferred : fallback;
+  final timestamp = DateTime.tryParse(raw)?.toLocal();
+  if (timestamp == null) return '';
+
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final date = DateTime(timestamp.year, timestamp.month, timestamp.day);
+  if (date == today || date == today.subtract(const Duration(days: 1))) {
+    final hour = timestamp.hour.toString().padLeft(2, '0');
+    final minute = timestamp.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
+  final day = timestamp.day.toString().padLeft(2, '0');
+  final month = timestamp.month.toString().padLeft(2, '0');
+  return '$day.$month';
 }
 
 /// Build a compact settings summary for Claude session cards.

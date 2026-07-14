@@ -2,7 +2,6 @@ import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../../constants/app_constants.dart';
@@ -31,38 +30,34 @@ import 'macos_native_app_banner.dart';
 import 'session_reconnect_banner.dart';
 import 'support_banner.dart';
 
-class _ProjectSessionGroup {
-  final String projectPath;
-  final String projectName;
-  final List<RecentSession> sessions;
+enum _SessionDateGroup { today, yesterday, earlier }
 
-  const _ProjectSessionGroup({
-    required this.projectPath,
-    required this.projectName,
-    required this.sessions,
-  });
+class _ChatListEntry {
+  final SessionInfo? runningSession;
+  final RecentSession? recentSession;
+  final DateTime timestamp;
+
+  const _ChatListEntry.running(this.runningSession, this.timestamp)
+    : recentSession = null;
+
+  const _ChatListEntry.recent(this.recentSession, this.timestamp)
+    : runningSession = null;
 }
 
-List<_ProjectSessionGroup> _groupSessionsByProject({
-  required Iterable<String> projectPaths,
-  required List<RecentSession> sessions,
-}) {
-  final grouped = <String, List<RecentSession>>{
-    for (final path in projectPaths)
-      if (path.isNotEmpty) path: <RecentSession>[],
-  };
-  for (final session in sessions) {
-    grouped.putIfAbsent(session.projectPath, () => <RecentSession>[]);
-    grouped[session.projectPath]!.add(session);
+DateTime _sessionTimestamp(String preferred, String fallback) {
+  final value = preferred.isNotEmpty ? preferred : fallback;
+  return DateTime.tryParse(value)?.toLocal() ??
+      DateTime.fromMillisecondsSinceEpoch(0);
+}
+
+_SessionDateGroup _dateGroupFor(DateTime timestamp, DateTime now) {
+  final today = DateTime(now.year, now.month, now.day);
+  final date = DateTime(timestamp.year, timestamp.month, timestamp.day);
+  if (date == today) return _SessionDateGroup.today;
+  if (date == today.subtract(const Duration(days: 1))) {
+    return _SessionDateGroup.yesterday;
   }
-  return [
-    for (final entry in grouped.entries)
-      _ProjectSessionGroup(
-        projectPath: entry.key,
-        projectName: pathBasename(entry.key),
-        sessions: entry.value,
-      ),
-  ];
+  return _SessionDateGroup.earlier;
 }
 
 class HomeContent extends StatefulWidget {
@@ -186,16 +181,12 @@ class HomeContent extends StatefulWidget {
 }
 
 class HomeContentState extends State<HomeContent> {
-  static const _displayModePreferenceKey = 'session_list_display_mode';
-  static const _groupRecentSessionsPreferenceKey =
-      'session_list_group_recent_sessions';
-
   bool _isSearching = false;
   bool _updateBannerDismissed = false;
   bool _showSupportBanner = false;
-  bool _groupRecentSessions = true;
   final _searchController = TextEditingController();
-  SessionDisplayMode _displayMode = SessionDisplayMode.first;
+  final _scrollController = ScrollController();
+  bool _loadMoreRequested = false;
   RevenueCatService? _revenueCatService;
   VoidCallback? _catalogStateListener;
   SupportBannerService? _supportBannerService;
@@ -204,24 +195,25 @@ class HomeContentState extends State<HomeContent> {
   @override
   void initState() {
     super.initState();
-    _loadPreferences();
+    _scrollController.addListener(_maybeLoadMore);
+    _scheduleLoadMoreCheck();
   }
 
-  Future<void> _loadPreferences() async {
-    final prefs = await SharedPreferences.getInstance();
-    final modeStr = prefs.getString(_displayModePreferenceKey);
-    final groupRecentSessions =
-        prefs.getBool(_groupRecentSessionsPreferenceKey) ?? true;
-    if (!mounted) return;
-    setState(() {
-      if (modeStr != null) {
-        _displayMode = SessionDisplayMode.values.firstWhere(
-          (m) => m.name == modeStr,
-          orElse: () => SessionDisplayMode.first,
-        );
-      }
-      _groupRecentSessions = groupRecentSessions;
-    });
+  void _scheduleLoadMoreCheck() {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeLoadMore());
+  }
+
+  void _maybeLoadMore() {
+    if (!mounted ||
+        !_scrollController.hasClients ||
+        !widget.hasMoreSessions ||
+        widget.isLoadingMore ||
+        _loadMoreRequested ||
+        _scrollController.position.extentAfter > 480) {
+      return;
+    }
+    _loadMoreRequested = true;
+    widget.onLoadMore();
   }
 
   @override
@@ -250,27 +242,15 @@ class HomeContentState extends State<HomeContent> {
     }
   }
 
-  void _toggleDisplayMode() async {
-    final next = switch (_displayMode) {
-      SessionDisplayMode.first => SessionDisplayMode.last,
-      SessionDisplayMode.last => SessionDisplayMode.summary,
-      SessionDisplayMode.summary => SessionDisplayMode.first,
-    };
-    setState(() => _displayMode = next);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_displayModePreferenceKey, next.name);
-  }
-
-  void _toggleRecentGrouping() async {
-    final next = !_groupRecentSessions;
-    setState(() => _groupRecentSessions = next);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_groupRecentSessionsPreferenceKey, next);
-  }
-
   @override
   void didUpdateWidget(covariant HomeContent oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.recentSessions.length != oldWidget.recentSessions.length ||
+        widget.isLoadingMore != oldWidget.isLoadingMore ||
+        widget.hasMoreSessions != oldWidget.hasMoreSessions) {
+      _loadMoreRequested = false;
+      _scheduleLoadMoreCheck();
+    }
     // 外部から searchQuery がクリアされたら検索UIも閉じる
     if (widget.searchQuery.isEmpty && oldWidget.searchQuery.isNotEmpty) {
       setState(() => _isSearching = false);
@@ -292,6 +272,7 @@ class HomeContentState extends State<HomeContent> {
       _supportBannerService!.removeListener(_supportBannerListener!);
     }
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -449,6 +430,78 @@ class HomeContentState extends State<HomeContent> {
     );
   }
 
+  Widget _buildRunningSessionRow(
+    BuildContext context,
+    SessionInfo session, {
+    required String? selectedSessionId,
+    required String? selectedSessionProvider,
+    required bool showInlineStopButton,
+  }) {
+    return Slidable(
+      key: ValueKey('running_session_${session.id}'),
+      endActionPane: ActionPane(
+        motion: const BehindMotion(),
+        extentRatio: 0.18,
+        children: [
+          CustomSlidableAction(
+            onPressed: (_) => widget.onStopSession(session.id),
+            backgroundColor: Colors.transparent,
+            padding: EdgeInsets.zero,
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.error,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.stop_circle_outlined,
+                color: Colors.white,
+                size: 22,
+              ),
+            ),
+          ),
+        ],
+      ),
+      child: RunningSessionCard(
+        session: session,
+        compact: true,
+        isUnseen: widget.unseenSessionIds.contains(session.id),
+        isSelected:
+            selectedSessionId == session.id &&
+            selectedSessionProvider == session.provider,
+        onLongPress: () => widget.onLongPressRunningSession(session, null),
+        onShowActions: (position) =>
+            widget.onLongPressRunningSession(session, position),
+        onStop: showInlineStopButton
+            ? () => widget.onStopSession(session.id)
+            : null,
+        onTap: () => widget.onTapRunning(
+          session.id,
+          projectPath: session.projectPath,
+          gitBranch: session.worktreePath != null
+              ? session.worktreeBranch
+              : session.gitBranch,
+          worktreePath: session.worktreePath,
+          provider: session.provider,
+          permissionMode: session.permissionMode,
+          sandboxMode: session.codexSandboxMode,
+          approvalPolicy: session.codexApprovalPolicy,
+          approvalsReviewer: session.codexApprovalsReviewer,
+        ),
+        onApprove: (toolUseId, {bool clearContext = false}) => widget
+            .onApprovePermission
+            ?.call(session.id, toolUseId, clearContext: clearContext),
+        onApproveAlways: (toolUseId) =>
+            widget.onApproveAlways?.call(session.id, toolUseId),
+        onReject: (toolUseId, {String? message}) => widget.onRejectPermission
+            ?.call(session.id, toolUseId, message: message),
+        onAnswer: (toolUseId, result) =>
+            widget.onAnswerQuestion?.call(session.id, toolUseId, result),
+      ),
+    );
+  }
+
   Widget _buildContent(BuildContext context) {
     final l = AppLocalizations.of(context);
     final appColors = Theme.of(context).extension<AppColors>()!;
@@ -506,17 +559,33 @@ class HomeContentState extends State<HomeContent> {
     final filteredSessions = widget.recentSessions
         .where((s) => !isDuplicate(s))
         .toList();
-    final allProjectPaths = <String>{
-      if (widget.currentProjectFilter != null) widget.currentProjectFilter!,
-      if (widget.currentProjectFilter == null)
-        ...widget.accumulatedProjectPaths,
-      if (widget.currentProjectFilter == null)
-        ...filteredSessions.map((session) => session.projectPath),
-    }.where((path) => path.isNotEmpty).toList();
-    final groupedRecentSessions = _groupSessionsByProject(
-      projectPaths: allProjectPaths,
-      sessions: filteredSessions,
-    );
+    final chatEntries = <_ChatListEntry>[
+      for (final session in widget.sessions)
+        _ChatListEntry.running(
+          session,
+          _sessionTimestamp(session.lastActivityAt, session.createdAt),
+        ),
+      for (final session in filteredSessions)
+        _ChatListEntry.recent(
+          session,
+          _sessionTimestamp(session.modified, session.created),
+        ),
+    ]..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    final now = DateTime.now();
+    final dateGroups = <_SessionDateGroup, List<_ChatListEntry>>{
+      for (final group in _SessionDateGroup.values) group: [],
+    };
+    for (final entry in chatEntries) {
+      dateGroups[_dateGroupFor(entry.timestamp, now)]!.add(entry);
+    }
+    final displayedDateGroups = widget.isInitialLoading
+        ? {
+            for (final group in _SessionDateGroup.values)
+              group: dateGroups[group]!
+                  .where((entry) => entry.runningSession != null)
+                  .toList(),
+          }
+        : dateGroups;
 
     final hasActiveFilter =
         widget.currentProjectFilter != null ||
@@ -543,7 +612,7 @@ class HomeContentState extends State<HomeContent> {
             ?macOSNativeAppBanner,
             SectionHeader(
               icon: Icons.history,
-              label: l.recentSessions,
+              label: l.chats,
               color: appColors.subtleText,
             ),
             const SizedBox(height: 8),
@@ -569,6 +638,7 @@ class HomeContentState extends State<HomeContent> {
 
     return ListView(
       key: const ValueKey('session_list'),
+      controller: _scrollController,
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(12),
@@ -578,13 +648,7 @@ class HomeContentState extends State<HomeContent> {
         ?updateBanner,
         ?supportBanner,
         ?macOSNativeAppBanner,
-        if (hasRunningSessions) ...[
-          SectionHeader(
-            icon: Icons.play_circle_filled,
-            label: l.running,
-            color: appColors.statusOnline,
-          ),
-          const SizedBox(height: 4),
+        if (hasPendingActions) ...[
           for (final action in widget.offlinePendingActions)
             OfflinePendingSessionCard(
               key: ValueKey('pending_session_${action.id}'),
@@ -595,84 +659,15 @@ class HomeContentState extends State<HomeContent> {
                   ? null
                   : () => widget.onCancelOfflinePendingAction!(action.id),
             ),
-          for (final session in widget.sessions)
-            Slidable(
-              key: ValueKey('running_session_${session.id}'),
-              endActionPane: ActionPane(
-                motion: const BehindMotion(),
-                extentRatio: 0.18,
-                children: [
-                  CustomSlidableAction(
-                    onPressed: (_) => widget.onStopSession(session.id),
-                    backgroundColor: Colors.transparent,
-                    padding: EdgeInsets.zero,
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.error,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.stop_circle_outlined,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              child: RunningSessionCard(
-                session: session,
-                compact: true,
-                isUnseen: widget.unseenSessionIds.contains(session.id),
-                isSelected:
-                    selectedSessionId == session.id &&
-                    selectedSessionProvider == session.provider,
-                onLongPress: () =>
-                    widget.onLongPressRunningSession(session, null),
-                onShowActions: (position) =>
-                    widget.onLongPressRunningSession(session, position),
-                onStop: showInlineStopButton
-                    ? () => widget.onStopSession(session.id)
-                    : null,
-                onTap: () => widget.onTapRunning(
-                  session.id,
-                  projectPath: session.projectPath,
-                  gitBranch: session.worktreePath != null
-                      ? session.worktreeBranch
-                      : session.gitBranch,
-                  worktreePath: session.worktreePath,
-                  provider: session.provider,
-                  permissionMode: session.permissionMode,
-                  sandboxMode: session.codexSandboxMode,
-                  approvalPolicy: session.codexApprovalPolicy,
-                  approvalsReviewer: session.codexApprovalsReviewer,
-                ),
-                onApprove: (toolUseId, {bool clearContext = false}) => widget
-                    .onApprovePermission
-                    ?.call(session.id, toolUseId, clearContext: clearContext),
-                onApproveAlways: (toolUseId) =>
-                    widget.onApproveAlways?.call(session.id, toolUseId),
-                onReject: (toolUseId, {String? message}) => widget
-                    .onRejectPermission
-                    ?.call(session.id, toolUseId, message: message),
-                onAnswer: (toolUseId, result) => widget.onAnswerQuestion?.call(
-                  session.id,
-                  toolUseId,
-                  result,
-                ),
-              ),
-            ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
         ],
         if (widget.isInitialLoading ||
-            hasRecentSessions ||
+            chatEntries.isNotEmpty ||
             hasKnownProjects ||
             hasActiveFilter) ...[
           SectionHeader(
-            icon: Icons.history,
-            label: l.recentSessions,
+            icon: Icons.chat_bubble_outline,
+            label: l.chats,
             color: appColors.subtleText,
             trailing: IconButton(
               key: const ValueKey('search_button'),
@@ -727,11 +722,6 @@ class HomeContentState extends State<HomeContent> {
           ],
           const SizedBox(height: 8),
           SessionFilterBar(
-            displayMode: _displayMode,
-            onToggleDisplayMode: _toggleDisplayMode,
-            showDisplayMode: false,
-            groupRecentSessions: _groupRecentSessions,
-            onToggleRecentGrouping: _toggleRecentGrouping,
             providerFilter: widget.providerFilter,
             onToggleProviderFilter: widget.onToggleProvider,
             projects: widget.accumulatedProjectPaths.map((path) {
@@ -743,70 +733,55 @@ class HomeContentState extends State<HomeContent> {
             onToggleNamed: widget.onToggleNamed,
           ),
           const SizedBox(height: 8),
+          if (!widget.isInitialLoading && chatEntries.isEmpty)
+            _RecentSessionsEmptyResult(
+              title: hasActiveFilter
+                  ? l.noSessionsMatchFilters
+                  : l.noRecentSessions,
+              subtitle: hasActiveFilter ? l.adjustFiltersAndSearch : null,
+            ),
+          for (final group in _SessionDateGroup.values)
+            if (displayedDateGroups[group]!.isNotEmpty) ...[
+              _DateGroupHeader(
+                label: switch (group) {
+                  _SessionDateGroup.today => l.chatGroupToday,
+                  _SessionDateGroup.yesterday => l.chatGroupYesterday,
+                  _SessionDateGroup.earlier => l.chatGroupEarlier,
+                },
+              ),
+              for (final entry in displayedDateGroups[group]!)
+                if (entry.runningSession != null)
+                  _buildRunningSessionRow(
+                    context,
+                    entry.runningSession!,
+                    selectedSessionId: selectedSessionId,
+                    selectedSessionProvider: selectedSessionProvider,
+                    showInlineStopButton: showInlineStopButton,
+                  )
+                else
+                  _RecentSessionSlidable(
+                    session: entry.recentSession!,
+                    archivingSessionIds: widget.archivingSessionIds,
+                    onArchiveSession: widget.onArchiveSession,
+                    onResumeSession: widget.onResumeSession,
+                    onLongPressRecentSession: widget.onLongPressRecentSession,
+                  ),
+            ],
           if (widget.isInitialLoading)
             const _SessionListSkeleton()
-          else ...[
-            if ((!_groupRecentSessions && filteredSessions.isEmpty) ||
-                (_groupRecentSessions && groupedRecentSessions.isEmpty))
-              _RecentSessionsEmptyResult(
-                title: hasActiveFilter
-                    ? l.noSessionsMatchFilters
-                    : l.noRecentSessions,
-                subtitle: hasActiveFilter ? l.adjustFiltersAndSearch : null,
-              )
-            else if (!_groupRecentSessions) ...[
-              for (final session in filteredSessions)
-                _RecentSessionSlidable(
-                  session: session,
-                  displayMode: _displayMode,
-                  archivingSessionIds: widget.archivingSessionIds,
-                  onArchiveSession: widget.onArchiveSession,
-                  onResumeSession: widget.onResumeSession,
-                  onLongPressRecentSession: widget.onLongPressRecentSession,
+          else if (widget.isLoadingMore) ...[
+            const SizedBox(height: 8),
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-              if (widget.hasMoreSessions) ...[
-                const SizedBox(height: 8),
-                _LoadMoreRecentSessionsButton(
-                  isLoadingMore: widget.isLoadingMore,
-                  onLoadMore: widget.onLoadMore,
-                ),
-                const SizedBox(height: 8),
-              ],
-            ] else
-              for (final group in groupedRecentSessions)
-                _ProjectRecentSessionGroup(
-                  group: group,
-                  displayMode: _displayMode,
-                  isCollapsed: widget.collapsedProjectPaths.contains(
-                    group.projectPath,
-                  ),
-                  isLoadingMore: widget.loadingProjectPaths.contains(
-                    group.projectPath,
-                  ),
-                  displayLimit:
-                      widget.projectSessionDisplayLimits[group.projectPath] ??
-                      5,
-                  canLoadFromBridge:
-                      widget.currentProjectFilter == null &&
-                      !widget.exhaustedProjectPaths.contains(group.projectPath),
-                  archivingSessionIds: widget.archivingSessionIds,
-                  onToggleCollapsed: () =>
-                      widget.onToggleProjectCollapsed?.call(group.projectPath),
-                  onLoadMore: () =>
-                      widget.onLoadMoreProject?.call(group.projectPath),
-                  onArchiveSession: widget.onArchiveSession,
-                  onResumeSession: widget.onResumeSession,
-                  onLongPressRecentSession: widget.onLongPressRecentSession,
-                ),
-            if (widget.currentProjectFilter != null &&
-                widget.hasMoreSessions) ...[
-              const SizedBox(height: 8),
-              _LoadMoreRecentSessionsButton(
-                isLoadingMore: widget.isLoadingMore,
-                onLoadMore: widget.onLoadMore,
               ),
-              const SizedBox(height: 8),
-            ],
+            ),
+            const SizedBox(height: 8),
           ],
         ],
       ],
@@ -814,40 +789,8 @@ class HomeContentState extends State<HomeContent> {
   }
 }
 
-class _LoadMoreRecentSessionsButton extends StatelessWidget {
-  final bool isLoadingMore;
-  final VoidCallback onLoadMore;
-
-  const _LoadMoreRecentSessionsButton({
-    required this.isLoadingMore,
-    required this.onLoadMore,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: isLoadingMore
-          ? const Padding(
-              padding: EdgeInsets.all(16),
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            )
-          : TextButton.icon(
-              key: const ValueKey('load_more_button'),
-              onPressed: onLoadMore,
-              icon: const Icon(Icons.expand_more, size: 18),
-              label: const Text('Load More'),
-            ),
-    );
-  }
-}
-
 class _RecentSessionSlidable extends StatelessWidget {
   final RecentSession session;
-  final SessionDisplayMode displayMode;
   final Set<String> archivingSessionIds;
   final ValueChanged<RecentSession> onArchiveSession;
   final ValueChanged<RecentSession> onResumeSession;
@@ -856,7 +799,6 @@ class _RecentSessionSlidable extends StatelessWidget {
 
   const _RecentSessionSlidable({
     required this.session,
-    required this.displayMode,
     required this.archivingSessionIds,
     required this.onArchiveSession,
     required this.onResumeSession,
@@ -894,7 +836,6 @@ class _RecentSessionSlidable extends StatelessWidget {
       child: RecentSessionCard(
         session: session,
         compact: true,
-        displayMode: displayMode,
         isSelected: false,
         draftText: context.read<DraftService>().getDraft(session.sessionId),
         isProcessing: archivingSessionIds.contains(session.sessionId),
@@ -951,164 +892,23 @@ class _RecentSessionsEmptyResult extends StatelessWidget {
   }
 }
 
-class _ProjectRecentSessionGroup extends StatelessWidget {
-  final _ProjectSessionGroup group;
-  final SessionDisplayMode displayMode;
-  final bool isCollapsed;
-  final bool isLoadingMore;
-  final int displayLimit;
-  final bool canLoadFromBridge;
-  final Set<String> archivingSessionIds;
-  final VoidCallback onToggleCollapsed;
-  final VoidCallback onLoadMore;
-  final ValueChanged<RecentSession> onArchiveSession;
-  final ValueChanged<RecentSession> onResumeSession;
-  final void Function(RecentSession session, Offset? position)
-  onLongPressRecentSession;
+class _DateGroupHeader extends StatelessWidget {
+  final String label;
 
-  const _ProjectRecentSessionGroup({
-    required this.group,
-    required this.displayMode,
-    required this.isCollapsed,
-    required this.isLoadingMore,
-    required this.displayLimit,
-    required this.canLoadFromBridge,
-    required this.archivingSessionIds,
-    required this.onToggleCollapsed,
-    required this.onLoadMore,
-    required this.onArchiveSession,
-    required this.onResumeSession,
-    required this.onLongPressRecentSession,
-  });
+  const _DateGroupHeader({required this.label});
 
   @override
   Widget build(BuildContext context) {
-    final visibleSessions = group.sessions.take(displayLimit).toList();
-    final hasHiddenLoadedSessions = group.sessions.length > displayLimit;
-    final canShowMore = hasHiddenLoadedSessions || canLoadFromBridge;
+    final color = Theme.of(context).colorScheme.onSurfaceVariant;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _ProjectRecentSessionHeader(
-            projectPath: group.projectPath,
-            projectName: group.projectName,
-            isCollapsed: isCollapsed,
-            onTap: onToggleCollapsed,
-          ),
-          if (!isCollapsed) ...[
-            const SizedBox(height: 4),
-            for (final session in visibleSessions)
-              _RecentSessionSlidable(
-                session: session,
-                displayMode: displayMode,
-                archivingSessionIds: archivingSessionIds,
-                onArchiveSession: onArchiveSession,
-                onResumeSession: onResumeSession,
-                onLongPressRecentSession: onLongPressRecentSession,
-              ),
-            if (isLoadingMore)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(12),
-                  child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              )
-            else if (canShowMore)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 28, top: 2, bottom: 4),
-                  child: InkWell(
-                    key: ValueKey('project_show_more_${group.projectPath}'),
-                    borderRadius: BorderRadius.circular(6),
-                    onTap: onLoadMore,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 5,
-                      ),
-                      child: Text(
-                        AppLocalizations.of(context).showMore,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              )
-            else if (group.sessions.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(left: 40, top: 4, bottom: 8),
-                child: Text(
-                  AppLocalizations.of(context).noRecentSessions,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _ProjectRecentSessionHeader extends StatelessWidget {
-  final String projectPath;
-  final String projectName;
-  final bool isCollapsed;
-  final VoidCallback onTap;
-
-  const _ProjectRecentSessionHeader({
-    required this.projectPath,
-    required this.projectName,
-    required this.isCollapsed,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        key: ValueKey('project_header_$projectPath'),
-        borderRadius: BorderRadius.circular(8),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-          child: Row(
-            children: [
-              AnimatedRotation(
-                turns: isCollapsed ? 0 : 0.25,
-                duration: const Duration(milliseconds: 160),
-                child: Icon(
-                  Icons.chevron_right,
-                  size: 18,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  projectName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
+      padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
+      child: Text(
+        label,
+        key: ValueKey('chat_date_group_$label'),
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
