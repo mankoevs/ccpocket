@@ -28,6 +28,7 @@ class RunningSessionCard extends StatefulWidget {
   final VoidCallback? onStop;
   final bool isUnseen;
   final bool isSelected;
+  final bool compact;
 
   const RunningSessionCard({
     super.key,
@@ -42,6 +43,7 @@ class RunningSessionCard extends StatefulWidget {
     this.onStop,
     this.isUnseen = false,
     this.isSelected = false,
+    this.compact = false,
   });
 
   @override
@@ -105,6 +107,34 @@ class _RunningSessionCardState extends State<RunningSessionCard> {
             ? Theme.of(context).colorScheme.onSurface
             : appColors.statusIdle,
     };
+
+    if (widget.compact) {
+      final trimmedName = session.name?.trim();
+      final projectName = pathBasename(session.projectPath);
+      final title = trimmedName != null && trimmedName.isNotEmpty
+          ? trimmedName
+          : projectName.isNotEmpty
+          ? projectName
+          : session.id;
+      final row = _CompactSessionRow(
+        title: title,
+        trailing: _compactSessionTimestamp(
+          session.lastActivityAt,
+          session.createdAt,
+        ),
+        isWorking: visualStatus.primary == SessionPrimaryStatus.working,
+        workingColor: appColors.statusRunning,
+        isSelected: widget.isSelected,
+        onTap: widget.onTap,
+      );
+      if (widget.onShowActions == null) {
+        return GestureDetector(onLongPress: widget.onLongPress, child: row);
+      }
+      return AdaptiveContextMenuRegion(
+        onOpen: widget.onShowActions!,
+        child: row,
+      );
+    }
 
     final permission = session.pendingPermission;
     final hasPermission = permission != null;
@@ -2431,6 +2461,7 @@ class RecentSessionCard extends StatelessWidget {
   final String? draftText;
   final bool isProcessing;
   final bool isSelected;
+  final bool compact;
 
   const RecentSessionCard({
     super.key,
@@ -2443,6 +2474,7 @@ class RecentSessionCard extends StatelessWidget {
     this.draftText,
     this.isProcessing = false,
     this.isSelected = false,
+    this.compact = false,
   });
 
   @override
@@ -2450,6 +2482,33 @@ class RecentSessionCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final appColors = theme.extension<AppColors>()!;
+    if (compact) {
+      final trimmedName = session.name?.trim();
+      final fallbackTitle = formatCommandText(
+        session.firstPrompt.replaceAll(RegExp(r'\s+'), ' ').trim(),
+      );
+      final title = trimmedName != null && trimmedName.isNotEmpty
+          ? trimmedName
+          : fallbackTitle.isNotEmpty
+          ? fallbackTitle
+          : session.sessionId;
+      final row = _CompactSessionRow(
+        title: title,
+        trailing: _compactSessionTimestamp(session.modified, session.created),
+        isWorking: false,
+        workingColor: appColors.statusRunning,
+        isSelected: isSelected,
+        isProcessing: isProcessing,
+        onTap: isProcessing ? null : onTap,
+      );
+      if (isProcessing || onShowActions == null) {
+        return GestureDetector(
+          onLongPress: isProcessing ? null : onLongPress,
+          child: row,
+        );
+      }
+      return AdaptiveContextMenuRegion(onOpen: onShowActions!, child: row);
+    }
     final provider = providerFromRaw(session.provider);
     final providerStyle = providerStyleFor(context, provider);
     final isCodex = session.provider == 'codex';
@@ -2756,6 +2815,136 @@ class RecentSessionCard extends StatelessWidget {
       return '';
     }
   }
+}
+
+class _CompactSessionRow extends StatelessWidget {
+  final String title;
+  final String trailing;
+  final bool isWorking;
+  final Color workingColor;
+  final bool isSelected;
+  final bool isProcessing;
+  final VoidCallback? onTap;
+
+  const _CompactSessionRow({
+    required this.title,
+    required this.trailing,
+    required this.isWorking,
+    required this.workingColor,
+    required this.isSelected,
+    this.isProcessing = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      elevation: 0,
+      color: colorScheme.surfaceContainerHigh,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: isSelected
+              ? colorScheme.primary.withValues(alpha: 0.9)
+              : colorScheme.outlineVariant.withValues(alpha: 0.45),
+          width: isSelected ? 2 : 1,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  key: const ValueKey('compact_session_title'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              if (isWorking) ...[
+                const SizedBox(width: 10),
+                Container(
+                  key: const ValueKey('compact_session_working'),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: workingColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _StatusDot(color: workingColor, animate: true),
+                      const SizedBox(width: 5),
+                      Text(
+                        AppLocalizations.of(context).working,
+                        style: TextStyle(
+                          color: workingColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else if (isProcessing) ...[
+                const SizedBox(width: 10),
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ],
+              if (trailing.isNotEmpty) ...[
+                const SizedBox(width: 10),
+                Text(
+                  trailing,
+                  key: const ValueKey('compact_session_timestamp'),
+                  maxLines: 1,
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _compactSessionTimestamp(String preferred, String fallback) {
+  final raw = preferred.isNotEmpty ? preferred : fallback;
+  final timestamp = DateTime.tryParse(raw)?.toLocal();
+  if (timestamp == null) return '';
+
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final date = DateTime(timestamp.year, timestamp.month, timestamp.day);
+  if (date == today || date == today.subtract(const Duration(days: 1))) {
+    final hour = timestamp.hour.toString().padLeft(2, '0');
+    final minute = timestamp.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
+  final day = timestamp.day.toString().padLeft(2, '0');
+  final month = timestamp.month.toString().padLeft(2, '0');
+  return '$day.$month';
 }
 
 /// Build a compact settings summary for Claude session cards.

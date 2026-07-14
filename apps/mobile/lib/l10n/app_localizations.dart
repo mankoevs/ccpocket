@@ -864,6 +864,54 @@ abstract class AppLocalizations {
   /// **'実行中'**
   String get running;
 
+  /// No description provided for @chats.
+  ///
+  /// In ja, this message translates to:
+  /// **'チャット'**
+  String get chats;
+
+  /// No description provided for @projects.
+  ///
+  /// In ja, this message translates to:
+  /// **'プロジェクト'**
+  String get projects;
+
+  /// No description provided for @pinProject.
+  ///
+  /// In ja, this message translates to:
+  /// **'プロジェクトを固定'**
+  String get pinProject;
+
+  /// No description provided for @unpinProject.
+  ///
+  /// In ja, this message translates to:
+  /// **'プロジェクトの固定を解除'**
+  String get unpinProject;
+
+  /// No description provided for @projectChats.
+  ///
+  /// In ja, this message translates to:
+  /// **'プロジェクトのチャット'**
+  String get projectChats;
+
+  /// No description provided for @chatGroupToday.
+  ///
+  /// In ja, this message translates to:
+  /// **'今日'**
+  String get chatGroupToday;
+
+  /// No description provided for @chatGroupYesterday.
+  ///
+  /// In ja, this message translates to:
+  /// **'昨日'**
+  String get chatGroupYesterday;
+
+  /// No description provided for @chatGroupEarlier.
+  ///
+  /// In ja, this message translates to:
+  /// **'以前'**
+  String get chatGroupEarlier;
+
   /// No description provided for @recentSessions.
   ///
   /// In ja, this message translates to:
@@ -3761,6 +3809,18 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'録音を停止'**
   String get tooltipStopRecording;
+
+  /// No description provided for @voiceTranscribing.
+  ///
+  /// In ja, this message translates to:
+  /// **'Whisperで文字起こし中…'**
+  String get voiceTranscribing;
+
+  /// No description provided for @voiceTranscriptionFailed.
+  ///
+  /// In ja, this message translates to:
+  /// **'録音を文字起こしできませんでした。Bridge接続を確認してもう一度お試しください。'**
+  String get voiceTranscriptionFailed;
 
   /// No description provided for @tooltipSendMessage.
   ///

@@ -25,8 +25,10 @@ const { setupLaunchd, uninstallLaunchd } = await import("./setup-launchd.js");
 const PLIST_PATH = "/Users/testuser/Library/LaunchAgents/com.ccpocket.bridge.plist";
 const originalBridgeEnv = {
   port: process.env.BRIDGE_PORT,
+  apiKey: process.env.BRIDGE_API_KEY,
   allowedDirs: process.env.BRIDGE_ALLOWED_DIRS,
   publicWsUrl: process.env.BRIDGE_PUBLIC_WS_URL,
+  groqApiKey: process.env.GROQ_API_KEY,
   disableMdns: process.env.BRIDGE_DISABLE_MDNS,
   codexAppServerMode: process.env.BRIDGE_CODEX_APP_SERVER_MODE,
   codexSharedAppServerUrl: process.env.BRIDGE_CODEX_SHARED_APP_SERVER_URL,
@@ -56,12 +58,17 @@ describe("setup-launchd", () => {
       expect(content).toContain("<key>BRIDGE_PORT</key>");
       expect(content).toContain("<string>8765</string>");
       expect(content).toContain("<key>BRIDGE_HOST</key>");
+      expect(content).toContain("<key>PATH</key>");
+      expect(content).toContain(
+        "<string>/Users/testuser/.local/bin:/Users/testuser/bin:/usr/bin:/opt/homebrew/bin:/usr/local/bin:/bin:/usr/sbin:/sbin</string>",
+      );
       expect(content).toContain(
         "<string>exec npx --yes @ccpocket/bridge@latest</string>",
       );
       expect(content).not.toContain("BRIDGE_API_KEY");
       expect(content).not.toContain("BRIDGE_ALLOWED_DIRS");
       expect(content).not.toContain("BRIDGE_PUBLIC_WS_URL");
+      expect(content).not.toContain("GROQ_API_KEY");
       expect(content).not.toContain("BRIDGE_DISABLE_MDNS");
       expect(content).not.toContain("BRIDGE_CODEX_APP_SERVER_MODE");
       expect(content).not.toContain("BRIDGE_CODEX_SHARED_APP_SERVER_URL");
@@ -113,6 +120,16 @@ describe("setup-launchd", () => {
       const content = mockWriteFileSync.mock.calls[0]![1] as string;
       expect(content).toContain("<string>wss://flag.example.com</string>");
       expect(content).not.toContain("wss://env.example.com");
+    });
+
+    it("persists GROQ_API_KEY for speech transcription", () => {
+      process.env.GROQ_API_KEY = "groq-secret";
+
+      setupLaunchd({});
+
+      const content = mockWriteFileSync.mock.calls[0]![1] as string;
+      expect(content).toContain("<key>GROQ_API_KEY</key>");
+      expect(content).toContain("<string>groq-secret</string>");
     });
 
     it("does not persist shared app-server URL without an explicit mode", () => {
@@ -182,8 +199,10 @@ describe("setup-launchd", () => {
 
 function clearBridgeEnv(): void {
   delete process.env.BRIDGE_PORT;
+  delete process.env.BRIDGE_API_KEY;
   delete process.env.BRIDGE_ALLOWED_DIRS;
   delete process.env.BRIDGE_PUBLIC_WS_URL;
+  delete process.env.GROQ_API_KEY;
   delete process.env.BRIDGE_DISABLE_MDNS;
   delete process.env.BRIDGE_CODEX_APP_SERVER_MODE;
   delete process.env.BRIDGE_CODEX_SHARED_APP_SERVER_URL;
@@ -193,8 +212,10 @@ function clearBridgeEnv(): void {
 
 function restoreBridgeEnv(): void {
   restoreEnvVar("BRIDGE_PORT", originalBridgeEnv.port);
+  restoreEnvVar("BRIDGE_API_KEY", originalBridgeEnv.apiKey);
   restoreEnvVar("BRIDGE_ALLOWED_DIRS", originalBridgeEnv.allowedDirs);
   restoreEnvVar("BRIDGE_PUBLIC_WS_URL", originalBridgeEnv.publicWsUrl);
+  restoreEnvVar("GROQ_API_KEY", originalBridgeEnv.groqApiKey);
   restoreEnvVar("BRIDGE_DISABLE_MDNS", originalBridgeEnv.disableMdns);
   restoreEnvVar(
     "BRIDGE_CODEX_APP_SERVER_MODE",

@@ -1,62 +1,71 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:speech_to_text/speech_recognition_result.dart';
-import 'package:speech_to_text/speech_to_text.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
 import '../utils/platform_helper.dart';
+import 'bridge_service.dart';
 
 class VoiceInputService {
-  final SpeechToText _speech = SpeechToText();
+  final AudioRecorder _recorder = AudioRecorder();
+  String? _recordingPath;
   bool _isAvailable = false;
-  bool _isListening = false;
+  bool _isRecording = false;
 
   bool get isAvailable => _isAvailable;
-  bool get isListening => _isListening;
+  bool get isRecording => _isRecording;
 
   Future<bool> initialize() async {
     if (kIsWeb || isDesktopPlatform) {
       _isAvailable = false;
       return false;
     }
-    _isAvailable = await _speech.initialize(
-      options: [SpeechToText.androidNoBluetooth],
-    );
+    _isAvailable = await _recorder.hasPermission();
     return _isAvailable;
   }
 
-  Future<void> startListening({
-    required void Function(String text, bool isFinal) onResult,
-    required void Function() onDone,
-    String? localeId,
-  }) async {
-    if (!_isAvailable || _isListening) return;
-    _isListening = true;
-    await _speech.listen(
-      onResult: (SpeechRecognitionResult result) {
-        onResult(result.recognizedWords, result.finalResult);
-      },
-      localeId: localeId,
-      listenOptions: SpeechListenOptions(
-        cancelOnError: true,
-        partialResults: true,
+  Future<void> startRecording() async {
+    if (!_isAvailable || _isRecording) return;
+    final tempDir = await getTemporaryDirectory();
+    final path =
+        '${tempDir.path}/ccpocket_voice_${DateTime.now().microsecondsSinceEpoch}.wav';
+    await _recorder.start(
+      const RecordConfig(
+        encoder: AudioEncoder.wav,
+        sampleRate: 16000,
+        numChannels: 1,
+        autoGain: true,
+        noiseSuppress: true,
       ),
+      path: path,
     );
-    // SpeechToText calls onDone via statusListener when done
-    _speech.statusListener = (status) {
-      if (status == 'done' || status == 'notListening') {
-        _isListening = false;
-        onDone();
-      }
-    };
+    _recordingPath = path;
+    _isRecording = true;
   }
 
-  Future<void> stopListening() async {
-    if (!_isListening) return;
-    await _speech.stop();
-    _isListening = false;
+  Future<String> stopAndTranscribe({
+    required BridgeService bridge,
+    String localeId = 'ru-RU',
+  }) async {
+    if (!_isRecording) return '';
+    _isRecording = false;
+    final path = await _recorder.stop() ?? _recordingPath;
+    _recordingPath = null;
+    if (path == null) throw StateError('Audio recording was not created');
+
+    final file = File(path);
+    try {
+      final bytes = await file.readAsBytes();
+      return await bridge.transcribeAudio(bytes, localeId: localeId);
+    } finally {
+      if (await file.exists()) await file.delete();
+    }
   }
 
   void dispose() {
-    _speech.cancel();
-    _isListening = false;
+    unawaited(_recorder.dispose());
+    _isRecording = false;
   }
 }

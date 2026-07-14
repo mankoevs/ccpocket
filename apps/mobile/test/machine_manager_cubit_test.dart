@@ -420,6 +420,28 @@ void main() {
 
       expect(machine?.id, 'm1');
     });
+
+    test('auto-connect machine lookup uses the default WSS port', () async {
+      final cubit = createCubit();
+      addTearDown(cubit.close);
+
+      final lookup = findAutoConnectMachine(
+        cubit,
+        Uri.parse('wss://bridge.example.com'),
+        loadTimeout: const Duration(milliseconds: 200),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      mockService.emitMachines([
+        MachineWithStatus(
+          machine: Machine(id: 'm1', host: 'bridge.example.com', port: 443),
+        ),
+      ]);
+
+      final machine = await lookup;
+
+      expect(machine?.id, 'm1');
+    });
   });
 
   group('MachineManagerCubit - refreshAll', () {

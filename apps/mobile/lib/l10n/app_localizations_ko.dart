@@ -411,6 +411,30 @@ class AppLocalizationsKo extends AppLocalizations {
   String get running => '실행 중';
 
   @override
+  String get chats => '채팅';
+
+  @override
+  String get projects => '프로젝트';
+
+  @override
+  String get pinProject => '프로젝트 고정';
+
+  @override
+  String get unpinProject => '프로젝트 고정 해제';
+
+  @override
+  String get projectChats => '프로젝트 채팅';
+
+  @override
+  String get chatGroupToday => '오늘';
+
+  @override
+  String get chatGroupYesterday => '어제';
+
+  @override
+  String get chatGroupEarlier => '이전';
+
+  @override
   String get recentSessions => '최근 세션';
 
   @override
@@ -1992,6 +2016,13 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get tooltipStopRecording => '녹음 중지';
+
+  @override
+  String get voiceTranscribing => 'Whisper로 변환 중…';
+
+  @override
+  String get voiceTranscriptionFailed =>
+      '녹음을 변환하지 못했습니다. Bridge 연결을 확인하고 다시 시도하세요.';
 
   @override
   String get tooltipSendMessage => '메시지 보내기';

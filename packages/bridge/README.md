@@ -112,6 +112,36 @@ that affect startup:
 - `BRIDGE_CODEX_APP_SERVER_MODE` / `--codex-app-server-mode`
 - `BRIDGE_CODEX_SHARED_APP_SERVER_URL` / `--codex-shared-app-server-url`
 
+### Connect from anywhere without a phone-wide VPN
+
+On a Mac or Linux host already signed in to Tailscale, the Bridge can expose
+itself through [Tailscale Funnel](https://tailscale.com/kb/1223/funnel). The
+phone connects directly to the resulting public `wss://` endpoint, so the
+Tailscale VPN does not need to run on the phone:
+
+```bash
+npx @ccpocket/bridge@latest setup-funnel
+```
+
+From a source checkout that already contains this command, use:
+
+```bash
+npm install
+npm run bridge:setup-funnel
+```
+
+The command enables Funnel for the Bridge port, generates a persistent API
+token when one was not supplied, and registers the Bridge as a background
+service with its stable Funnel URL. The token is stored at
+`~/.ccpocket/funnel-api-key` with owner-only permissions and is also persisted
+in the service configuration. The first run may print a Tailscale approval URL;
+open it once, then run the command again.
+
+Funnel makes the endpoint publicly reachable, so API-key authentication is
+always enabled by this setup command. Scan the Bridge QR code once in CC Pocket;
+the app stores the token in platform-secure storage and reconnects over `wss://`
+without a separate VPN app.
+
 Example:
 
 ```bash

@@ -93,6 +93,7 @@ Widget _buildHomeContent({
   List<SessionInfo> sessions = const [],
   List<OfflinePendingAction> offlinePendingActions = const [],
   List<RecentSession> recentSessions = const [],
+  Set<String> accumulatedProjectPaths = const {},
   Set<String> exhaustedProjectPaths = const {},
   Map<String, int> projectSessionDisplayLimits = const {},
   String? currentProjectFilter,
@@ -100,6 +101,8 @@ Widget _buildHomeContent({
   bool isInitialLoading = false,
   bool showMacOSNativeAppBanner = false,
   VoidCallback? onDismissMacOSNativeAppBanner,
+  VoidCallback? onLoadMore,
+  ValueChanged<String>? onNewSessionForProject,
   required SessionListCubit cubit,
   required DraftService draftService,
   required RevenueCatService revenueCatService,
@@ -126,7 +129,7 @@ Widget _buildHomeContent({
             sessions: sessions,
             offlinePendingActions: offlinePendingActions,
             recentSessions: recentSessions,
-            accumulatedProjectPaths: const {},
+            accumulatedProjectPaths: accumulatedProjectPaths,
             exhaustedProjectPaths: exhaustedProjectPaths,
             projectSessionDisplayLimits: projectSessionDisplayLimits,
             searchQuery: '',
@@ -135,6 +138,7 @@ Widget _buildHomeContent({
             hasMoreSessions: hasMoreSessions,
             currentProjectFilter: currentProjectFilter,
             onNewSession: () {},
+            onNewSessionForProject: onNewSessionForProject,
             onTapRunning:
                 (
                   id, {
@@ -153,7 +157,7 @@ Widget _buildHomeContent({
             onArchiveSession: (_) {},
             onLongPressRunningSession: (_, _) {},
             onSelectProject: (_) {},
-            onLoadMore: () {},
+            onLoadMore: onLoadMore ?? () {},
             onLoadMoreProject: (_) {},
             providerFilter: ProviderFilter.all,
             namedOnly: false,
@@ -218,8 +222,7 @@ void main() {
       // Skeletonizer internally renders as _Skeletonizer + SkeletonizerScope.
       // Use SkeletonizerScope to detect presence.
       expect(find.byType(SkeletonizerScope), findsOneWidget);
-      // Section header should say "Recent Sessions"
-      expect(find.text('Recent Sessions'), findsOneWidget);
+      expect(find.text('Chats'), findsAtLeast(1));
     });
 
     testWidgets('shows empty state when isInitialLoading is false and '
@@ -266,7 +269,56 @@ void main() {
       expect(find.text('test prompt for s2'), findsOneWidget);
     });
 
-    testWidgets('shows only five sessions per project by default', (
+    testWidgets('renders home chats as compact title-only rows', (
+      tester,
+    ) async {
+      final running = SessionInfo(
+        id: 'running-compact',
+        name: 'Active refactor',
+        projectPath: '/home/user/project-a',
+        status: 'running',
+        createdAt: '2025-01-01T12:00:00Z',
+        lastActivityAt: '2025-01-01T12:00:00Z',
+        gitBranch: 'feat/compact-list',
+        lastMessage: 'Editing the session card',
+      );
+      final recent = RecentSession(
+        sessionId: 'recent-compact',
+        name: 'Finished setup',
+        firstPrompt: 'Set up the entire project',
+        created: '2025-01-01T00:00:00Z',
+        modified: '2025-01-01T00:00:00Z',
+        gitBranch: 'main',
+        projectPath: '/home/user/project-a',
+        isSidechain: false,
+      );
+
+      await tester.pumpWidget(
+        _buildHomeContent(
+          sessions: [running],
+          recentSessions: [recent],
+          isInitialLoading: false,
+          cubit: cubit,
+          draftService: draftService,
+          revenueCatService: revenueCatService,
+          supportBannerService: supportBannerService,
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Active refactor'), findsOneWidget);
+      expect(find.text('Finished setup'), findsOneWidget);
+      expect(find.text('Editing the session card'), findsNothing);
+      expect(find.text('Set up the entire project'), findsNothing);
+      expect(find.text('feat/compact-list'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('compact_session_working')),
+        findsOneWidget,
+      );
+      expect(find.byIcon(Icons.visibility_outlined), findsNothing);
+    });
+
+    testWidgets('shows every loaded chat without project grouping', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -283,45 +335,52 @@ void main() {
 
       expect(find.text('test prompt for s1'), findsOneWidget);
       expect(find.text('test prompt for s5'), findsOneWidget);
-      expect(find.text('test prompt for s6'), findsNothing);
+      expect(find.text('test prompt for s6'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('project_show_more_/home/user/project-a')),
-        findsOneWidget,
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('recent_grouping_toggle')),
+        findsNothing,
       );
     });
 
-    testWidgets(
-      'shows expanded project sessions after display limit increases',
-      (tester) async {
-        await tester.pumpWidget(
-          _buildHomeContent(
-            recentSessions: [for (var i = 1; i <= 6; i++) _session(id: 's$i')],
-            exhaustedProjectPaths: const {'/home/user/project-a'},
-            projectSessionDisplayLimits: const {'/home/user/project-a': 25},
-            isInitialLoading: false,
-            cubit: cubit,
-            draftService: draftService,
-            revenueCatService: revenueCatService,
-            supportBannerService: supportBannerService,
-          ),
-        );
-        await tester.pump();
+    testWidgets('groups chats by today yesterday and earlier', (tester) async {
+      final now = DateTime.now();
+      String iso(DateTime value) => value.toUtc().toIso8601String();
 
-        expect(find.text('test prompt for s6'), findsOneWidget);
-        expect(
-          find.byKey(const ValueKey('project_show_more_/home/user/project-a')),
-          findsNothing,
-        );
-      },
-    );
-
-    testWidgets('ungrouped toggle reveals loaded sessions and persists', (
-      tester,
-    ) async {
       await tester.pumpWidget(
         _buildHomeContent(
-          recentSessions: [for (var i = 1; i <= 6; i++) _session(id: 's$i')],
-          exhaustedProjectPaths: const {'/home/user/project-a'},
+          recentSessions: [
+            RecentSession(
+              sessionId: 'today',
+              firstPrompt: 'Today chat',
+              created: iso(now),
+              modified: iso(now),
+              gitBranch: '',
+              projectPath: '/one',
+              isSidechain: false,
+            ),
+            RecentSession(
+              sessionId: 'yesterday',
+              firstPrompt: 'Yesterday chat',
+              created: iso(now.subtract(const Duration(days: 1))),
+              modified: iso(now.subtract(const Duration(days: 1))),
+              gitBranch: '',
+              projectPath: '/two',
+              isSidechain: false,
+            ),
+            RecentSession(
+              sessionId: 'earlier',
+              firstPrompt: 'Earlier chat',
+              created: '2025-01-01T00:00:00Z',
+              modified: '2025-01-01T00:00:00Z',
+              gitBranch: '',
+              projectPath: '/three',
+              isSidechain: false,
+            ),
+          ],
           isInitialLoading: false,
           cubit: cubit,
           draftService: draftService,
@@ -331,36 +390,27 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('test prompt for s6'), findsNothing);
+      expect(find.text('Today'), findsOneWidget);
+      expect(find.text('Yesterday'), findsOneWidget);
+      expect(find.text('Earlier'), findsOneWidget);
+      expect(find.text('Today chat'), findsOneWidget);
+      expect(find.text('Yesterday chat'), findsOneWidget);
+      expect(find.text('Earlier chat'), findsOneWidget);
       expect(
-        find.byKey(const ValueKey('project_show_more_/home/user/project-a')),
-        findsOneWidget,
+        find.byKey(const ValueKey('compact_session_timestamp')),
+        findsNWidgets(3),
       );
-
-      await tester.tap(find.byKey(const ValueKey('recent_grouping_toggle')));
-      await tester.pumpAndSettle();
-
-      expect(
-        find.text('test prompt for s6', skipOffstage: false),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey('project_show_more_/home/user/project-a')),
-        findsNothing,
-      );
-      expect(find.text('List'), findsOneWidget);
-
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('session_list_group_recent_sessions'), isFalse);
     });
 
-    testWidgets('ungrouped mode uses global load more pagination', (
+    testWidgets('loads more automatically without project controls', (
       tester,
     ) async {
+      var loadMoreCalls = 0;
       await tester.pumpWidget(
         _buildHomeContent(
           recentSessions: [_session(id: 's1')],
           hasMoreSessions: true,
+          onLoadMore: () => loadMoreCalls += 1,
           isInitialLoading: false,
           cubit: cubit,
           draftService: draftService,
@@ -370,23 +420,37 @@ void main() {
       );
       await tester.pump();
 
-      await tester.tap(find.byKey(const ValueKey('recent_grouping_toggle')));
-      await tester.pumpAndSettle();
-
       expect(
         find.byKey(const ValueKey('project_show_more_/home/user/project-a')),
         findsNothing,
       );
-      expect(find.byKey(const ValueKey('load_more_button')), findsOneWidget);
+      expect(find.byKey(const ValueKey('load_more_button')), findsNothing);
+      expect(loadMoreCalls, 1);
     });
 
-    testWidgets('hides project Show more when project is exhausted', (
+    testWidgets('project view sorts by latest chat and expands project chats', (
       tester,
     ) async {
+      String? openedProject;
+      final projectA = _session(
+        id: 'project-a-chat',
+        projectPath: '/work/project-a',
+      );
+      final projectB = RecentSession(
+        sessionId: 'project-b-chat',
+        firstPrompt: 'Newest project chat',
+        created: '2025-01-03T00:00:00Z',
+        modified: '2025-01-03T00:00:00Z',
+        gitBranch: 'main',
+        projectPath: '/work/project-b',
+        isSidechain: false,
+      );
+
       await tester.pumpWidget(
         _buildHomeContent(
-          recentSessions: [_session(id: 's1')],
-          exhaustedProjectPaths: const {'/home/user/project-a'},
+          recentSessions: [projectA, projectB],
+          accumulatedProjectPaths: const {'/work/project-a', '/work/project-b'},
+          onNewSessionForProject: (path) => openedProject = path,
           isInitialLoading: false,
           cubit: cubit,
           draftService: draftService,
@@ -394,38 +458,86 @@ void main() {
           supportBannerService: supportBannerService,
         ),
       );
-      await tester.pump();
-
-      expect(
-        find.byKey(const ValueKey('project_show_more_/home/user/project-a')),
-        findsNothing,
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('session_list_view_projects')),
       );
+      await tester.pumpAndSettle();
+
+      final projectARow = find.byKey(
+        const ValueKey('project_row_/work/project-a'),
+      );
+      final projectBRow = find.byKey(
+        const ValueKey('project_row_/work/project-b'),
+      );
+      expect(projectARow, findsOneWidget);
+      expect(projectBRow, findsOneWidget);
+      expect(
+        tester.getTopLeft(projectBRow).dy,
+        lessThan(tester.getTopLeft(projectARow).dy),
+      );
+      expect(find.text('Newest project chat'), findsNothing);
+
+      await tester.tap(
+        find.byKey(const ValueKey('project_expand_/work/project-b')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Newest project chat'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey('project_open_/work/project-b')),
+      );
+      expect(openedProject, '/work/project-b');
     });
 
-    testWidgets(
-      'uses global load more instead of project Show more in filter',
-      (tester) async {
-        await tester.pumpWidget(
-          _buildHomeContent(
-            recentSessions: [_session(id: 's1')],
-            currentProjectFilter: '/home/user/project-a',
-            hasMoreSessions: true,
-            isInitialLoading: false,
-            cubit: cubit,
-            draftService: draftService,
-            revenueCatService: revenueCatService,
-            supportBannerService: supportBannerService,
-          ),
-        );
-        await tester.pump();
+    testWidgets('pinned project moves first and persists', (tester) async {
+      await tester.pumpWidget(
+        _buildHomeContent(
+          recentSessions: [
+            _session(id: 'older', projectPath: '/work/older-project'),
+            RecentSession(
+              sessionId: 'newer',
+              firstPrompt: 'Newer',
+              created: '2025-01-03T00:00:00Z',
+              modified: '2025-01-03T00:00:00Z',
+              gitBranch: 'main',
+              projectPath: '/work/newer-project',
+              isSidechain: false,
+            ),
+          ],
+          isInitialLoading: false,
+          cubit: cubit,
+          draftService: draftService,
+          revenueCatService: revenueCatService,
+          supportBannerService: supportBannerService,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('session_list_view_projects')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('project_pin_/work/older-project')),
+      );
+      await tester.pumpAndSettle();
 
-        expect(
-          find.byKey(const ValueKey('project_show_more_/home/user/project-a')),
-          findsNothing,
-        );
-        expect(find.byKey(const ValueKey('load_more_button')), findsOneWidget);
-      },
-    );
+      final older = find.byKey(
+        const ValueKey('project_row_/work/older-project'),
+      );
+      final newer = find.byKey(
+        const ValueKey('project_row_/work/newer-project'),
+      );
+      expect(
+        tester.getTopLeft(older).dy,
+        lessThan(tester.getTopLeft(newer).dy),
+      );
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.getStringList('session_list_pinned_projects'),
+        contains('/work/older-project'),
+      );
+    });
 
     testWidgets('shows skeleton below running sessions when '
         'isInitialLoading is true', (tester) async {
@@ -442,11 +554,11 @@ void main() {
       );
       await tester.pump();
 
-      // Running session section should be visible
-      expect(find.text('Running'), findsAtLeast(1));
+      expect(find.text('Earlier'), findsOneWidget);
+      expect(find.byKey(const ValueKey('running_session_r1')), findsOneWidget);
       // Skeleton should show for recent sessions section
       expect(find.byType(SkeletonizerScope), findsOneWidget);
-      expect(find.text('Recent Sessions'), findsOneWidget);
+      expect(find.text('Chats'), findsAtLeast(1));
     });
 
     testWidgets('shows real recent sessions (not skeleton) below running '
@@ -464,8 +576,7 @@ void main() {
       );
       await tester.pump();
 
-      // Running section visible
-      expect(find.text('Running'), findsAtLeast(1));
+      expect(find.byKey(const ValueKey('running_session_r1')), findsOneWidget);
       // No skeleton
       expect(find.byType(SkeletonizerScope), findsNothing);
       // Real recent session visible
@@ -500,7 +611,7 @@ void main() {
         );
         await tester.pump();
 
-        expect(find.text('Running'), findsOneWidget);
+        expect(find.text('Chats'), findsAtLeast(1));
         expect(find.text('Resume pending'), findsOneWidget);
         expect(find.text('test prompt for s1'), findsNothing);
         expect(find.text('test prompt for s2'), findsOneWidget);

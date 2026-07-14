@@ -26,6 +26,7 @@ class ChatInputBar extends StatelessWidget {
   final bool isInputEmpty;
   final bool isVoiceAvailable;
   final bool isRecording;
+  final bool isTranscribing;
   final VoidCallback onSend;
   final VoidCallback onStop;
   final VoidCallback onInterrupt;
@@ -66,6 +67,7 @@ class ChatInputBar extends StatelessWidget {
     this.isInputEmpty = true,
     required this.isVoiceAvailable,
     required this.isRecording,
+    this.isTranscribing = false,
     required this.onSend,
     required this.onStop,
     required this.onInterrupt,
@@ -170,7 +172,11 @@ class ChatInputBar extends StatelessWidget {
               ],
               const Spacer(),
               if (isVoiceAvailable) ...[
-                _VoiceButton(isRecording: isRecording, onTap: onToggleVoice),
+                _VoiceButton(
+                  isRecording: isRecording,
+                  isTranscribing: isTranscribing,
+                  onTap: onToggleVoice,
+                ),
                 const SizedBox(width: 8),
               ],
               _ActionButton(
@@ -1052,8 +1058,13 @@ class _StopButton extends StatelessWidget {
 }
 
 class _VoiceButton extends StatelessWidget {
-  const _VoiceButton({required this.isRecording, required this.onTap});
+  const _VoiceButton({
+    required this.isRecording,
+    required this.isTranscribing,
+    required this.onTap,
+  });
   final bool isRecording;
+  final bool isTranscribing;
   final VoidCallback onTap;
 
   @override
@@ -1061,23 +1072,36 @@ class _VoiceButton extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final l = AppLocalizations.of(context);
     return Tooltip(
-      message: isRecording ? l.tooltipStopRecording : l.tooltipVoiceInput,
+      message: isTranscribing
+          ? l.voiceTranscribing
+          : isRecording
+          ? l.tooltipStopRecording
+          : l.tooltipVoiceInput,
       child: Material(
         color: isRecording ? cs.error : cs.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(20),
         child: InkWell(
           key: const ValueKey('voice_button'),
           borderRadius: BorderRadius.circular(20),
-          onTap: onTap,
+          onTap: isTranscribing ? null : onTap,
           child: Container(
             width: 36,
             height: 36,
             alignment: Alignment.center,
-            child: Icon(
-              isRecording ? Icons.stop : Icons.mic,
-              size: 18,
-              color: isRecording ? cs.onError : cs.primary,
-            ),
+            child: isTranscribing
+                ? SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: cs.primary,
+                    ),
+                  )
+                : Icon(
+                    isRecording ? Icons.stop : Icons.mic,
+                    size: 18,
+                    color: isRecording ? cs.onError : cs.primary,
+                  ),
           ),
         ),
       ),

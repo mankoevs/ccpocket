@@ -410,6 +410,30 @@ class AppLocalizationsJa extends AppLocalizations {
   String get running => '実行中';
 
   @override
+  String get chats => 'チャット';
+
+  @override
+  String get projects => 'プロジェクト';
+
+  @override
+  String get pinProject => 'プロジェクトを固定';
+
+  @override
+  String get unpinProject => 'プロジェクトの固定を解除';
+
+  @override
+  String get projectChats => 'プロジェクトのチャット';
+
+  @override
+  String get chatGroupToday => '今日';
+
+  @override
+  String get chatGroupYesterday => '昨日';
+
+  @override
+  String get chatGroupEarlier => '以前';
+
+  @override
   String get recentSessions => '最近のセッション';
 
   @override
@@ -1979,6 +2003,13 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get tooltipStopRecording => '録音を停止';
+
+  @override
+  String get voiceTranscribing => 'Whisperで文字起こし中…';
+
+  @override
+  String get voiceTranscriptionFailed =>
+      '録音を文字起こしできませんでした。Bridge接続を確認してもう一度お試しください。';
 
   @override
   String get tooltipSendMessage => 'メッセージを送信';

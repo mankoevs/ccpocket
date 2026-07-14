@@ -60,6 +60,7 @@ void main() {
 
     // Advance past the deep-link timeout timer (3 seconds)
     await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
 
     // Connect screen should be visible when disconnected.
     expect(find.text('Connect to Bridge Server'), findsOneWidget);

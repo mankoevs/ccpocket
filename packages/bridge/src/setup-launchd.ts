@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   defaultCodexSharedAppServerUrl,
   readCodexSharedAppServerUrl,
@@ -50,6 +50,7 @@ export function setupLaunchd(opts: SetupOptions): void {
   const allowedDirs = process.env.BRIDGE_ALLOWED_DIRS ?? "";
   const publicWsUrl =
     opts.publicWsUrl ?? process.env.BRIDGE_PUBLIC_WS_URL ?? "";
+  const groqApiKey = process.env.GROQ_API_KEY ?? "";
   const disableMdns = opts.disableMdns || process.env.BRIDGE_DISABLE_MDNS;
   const codexAppServerMode =
     opts.codexAppServerMode ?? process.env.BRIDGE_CODEX_APP_SERVER_MODE ?? "";
@@ -83,8 +84,24 @@ export function setupLaunchd(opts: SetupOptions): void {
   }
   console.log(`==> npx: ${npxPath}`);
 
+  const servicePath = [
+    join(homedir(), ".local", "bin"),
+    join(homedir(), "bin"),
+    dirname(npxPath),
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+  ]
+    .filter((entry, index, entries) => entries.indexOf(entry) === index)
+    .join(":");
+
   // Build environment variables block
-  let envBlock = `        <key>BRIDGE_PORT</key>
+  let envBlock = `        <key>PATH</key>
+        <string>${servicePath}</string>
+        <key>BRIDGE_PORT</key>
         <string>${port}</string>
         <key>BRIDGE_HOST</key>
         <string>${host}</string>`;
@@ -105,6 +122,12 @@ export function setupLaunchd(opts: SetupOptions): void {
     envBlock += `
         <key>BRIDGE_PUBLIC_WS_URL</key>
         <string>${publicWsUrl}</string>`;
+  }
+
+  if (groqApiKey) {
+    envBlock += `
+        <key>GROQ_API_KEY</key>
+        <string>${groqApiKey}</string>`;
   }
 
   if (disableMdns) {

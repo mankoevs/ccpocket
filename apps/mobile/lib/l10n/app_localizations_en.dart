@@ -416,6 +416,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get running => 'Running';
 
   @override
+  String get chats => 'Chats';
+
+  @override
+  String get projects => 'Projects';
+
+  @override
+  String get pinProject => 'Pin project';
+
+  @override
+  String get unpinProject => 'Unpin project';
+
+  @override
+  String get projectChats => 'Project chats';
+
+  @override
+  String get chatGroupToday => 'Today';
+
+  @override
+  String get chatGroupYesterday => 'Yesterday';
+
+  @override
+  String get chatGroupEarlier => 'Earlier';
+
+  @override
   String get recentSessions => 'Recent Sessions';
 
   @override
@@ -2051,6 +2075,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tooltipStopRecording => 'Stop recording';
+
+  @override
+  String get voiceTranscribing => 'Transcribing with Whisper…';
+
+  @override
+  String get voiceTranscriptionFailed =>
+      'Whisper could not transcribe the recording. Check the Bridge connection and try again.';
 
   @override
   String get tooltipSendMessage => 'Send message';

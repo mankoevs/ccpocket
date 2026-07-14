@@ -111,6 +111,65 @@ void main() {
   });
 
   group('RunningSessionCard', () {
+    testWidgets('compact mode shows only chat title and working marker', (
+      tester,
+    ) async {
+      final session = SessionInfo(
+        id: 'compact-running',
+        name: 'Whisper integration',
+        projectPath: '/home/user/my-app',
+        status: 'running',
+        createdAt: DateTime.now().toIso8601String(),
+        lastActivityAt: DateTime.now().toIso8601String(),
+        gitBranch: 'feat/voice',
+        lastMessage: 'Installing dependencies',
+        codexModel: 'gpt-5.4',
+      );
+
+      await tester.pumpWidget(
+        _wrap(
+          RunningSessionCard(session: session, compact: true, onTap: () {}),
+        ),
+      );
+
+      expect(find.text('Whisper integration'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('compact_session_working')),
+        findsOneWidget,
+      );
+      expect(find.text('Installing dependencies'), findsNothing);
+      expect(find.text('feat/voice'), findsNothing);
+      expect(find.text('gpt-5.4'), findsNothing);
+      expect(find.text('my-app'), findsNothing);
+      final timestamp = tester.widget<Text>(
+        find.byKey(const ValueKey('compact_session_timestamp')),
+      );
+      expect(timestamp.data, matches(RegExp(r'^\d{2}:\d{2}$')));
+    });
+
+    testWidgets('compact idle chat has no working marker', (tester) async {
+      final session = SessionInfo(
+        id: 'compact-idle',
+        name: 'Finished chat',
+        projectPath: '/home/user/my-app',
+        status: 'idle',
+        createdAt: DateTime.now().toIso8601String(),
+        lastActivityAt: DateTime.now().toIso8601String(),
+      );
+
+      await tester.pumpWidget(
+        _wrap(
+          RunningSessionCard(session: session, compact: true, onTap: () {}),
+        ),
+      );
+
+      expect(find.text('Finished chat'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('compact_session_working')),
+        findsNothing,
+      );
+    });
+
     test('maps visual status for running plan session', () {
       final visual = sessionVisualStatusFor(
         rawStatus: 'running',
@@ -1037,6 +1096,55 @@ void main() {
   });
 
   group('RecentSessionCard', () {
+    testWidgets('compact mode shows only the assigned chat title', (
+      tester,
+    ) async {
+      final session = RecentSession(
+        sessionId: 'compact-recent',
+        name: 'Tailscale setup',
+        firstPrompt: 'Configure a remote connection',
+        created: '2025-07-14T12:34:00Z',
+        modified: '2025-07-14T12:34:00Z',
+        gitBranch: 'main',
+        projectPath: '/home/user/my-app',
+        isSidechain: false,
+      );
+
+      await tester.pumpWidget(
+        _wrap(RecentSessionCard(session: session, compact: true, onTap: () {})),
+      );
+
+      expect(find.text('Tailscale setup'), findsOneWidget);
+      expect(find.text('Configure a remote connection'), findsNothing);
+      expect(find.text('main'), findsNothing);
+      expect(find.text('my-app'), findsNothing);
+      expect(find.text('14.07'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('compact_session_working')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('compact mode uses first prompt when chat has no title', (
+      tester,
+    ) async {
+      final session = RecentSession(
+        sessionId: 'compact-fallback',
+        firstPrompt: '  Fix   the login flow  ',
+        created: DateTime.now().toIso8601String(),
+        modified: DateTime.now().toIso8601String(),
+        gitBranch: '',
+        projectPath: '/home/user/my-app',
+        isSidechain: false,
+      );
+
+      await tester.pumpWidget(
+        _wrap(RecentSessionCard(session: session, compact: true, onTap: () {})),
+      );
+
+      expect(find.text('Fix the login flow'), findsOneWidget);
+    });
+
     testWidgets('uses first, last, and summary fields by display mode', (
       tester,
     ) async {

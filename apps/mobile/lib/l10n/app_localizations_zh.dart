@@ -406,6 +406,30 @@ class AppLocalizationsZh extends AppLocalizations {
   String get running => '进行中';
 
   @override
+  String get chats => '聊天';
+
+  @override
+  String get projects => '项目';
+
+  @override
+  String get pinProject => '置顶项目';
+
+  @override
+  String get unpinProject => '取消置顶项目';
+
+  @override
+  String get projectChats => '项目聊天';
+
+  @override
+  String get chatGroupToday => '今天';
+
+  @override
+  String get chatGroupYesterday => '昨天';
+
+  @override
+  String get chatGroupEarlier => '更早';
+
+  @override
   String get recentSessions => '最近会话';
 
   @override
@@ -1957,6 +1981,12 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get tooltipStopRecording => '停止录音';
+
+  @override
+  String get voiceTranscribing => '正在使用 Whisper 转写…';
+
+  @override
+  String get voiceTranscriptionFailed => '无法转写录音。请检查 Bridge 连接后重试。';
 
   @override
   String get tooltipSendMessage => '发送消息';

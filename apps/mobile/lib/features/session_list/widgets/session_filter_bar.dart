@@ -1,15 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../../l10n/app_localizations.dart';
-import '../../../models/messages.dart';
 import '../../../theme/app_theme.dart';
 import '../state/session_list_state.dart';
 
 class SessionFilterBar extends StatelessWidget {
-  final SessionDisplayMode displayMode;
-  final VoidCallback onToggleDisplayMode;
-  final bool groupRecentSessions;
-  final VoidCallback onToggleRecentGrouping;
   final ProviderFilter providerFilter;
   final VoidCallback onToggleProviderFilter;
   final List<({String path, String name})> projects;
@@ -20,10 +15,6 @@ class SessionFilterBar extends StatelessWidget {
 
   const SessionFilterBar({
     super.key,
-    required this.displayMode,
-    required this.onToggleDisplayMode,
-    required this.groupRecentSessions,
-    required this.onToggleRecentGrouping,
     required this.providerFilter,
     required this.onToggleProviderFilter,
     required this.projects,
@@ -41,10 +32,6 @@ class SessionFilterBar extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildDisplayModeDropdown(context),
-          const SizedBox(width: 8),
-          _buildGroupingToggle(context),
-          const SizedBox(width: 8),
           _buildProviderDropdown(context),
           const SizedBox(width: 8),
           if (projects.isNotEmpty) ...[
@@ -54,35 +41,6 @@ class SessionFilterBar extends StatelessWidget {
           _buildNamedToggle(context),
         ],
       ),
-    );
-  }
-
-  Widget _buildGroupingToggle(BuildContext context) {
-    return _ActionChip(
-      key: const ValueKey('recent_grouping_toggle'),
-      icon: groupRecentSessions
-          ? Icons.account_tree_outlined
-          : Icons.view_list_outlined,
-      label: groupRecentSessions ? 'Grouped' : 'List',
-      tooltip: 'Toggle recent session grouping',
-      onTap: onToggleRecentGrouping,
-      isActive: !groupRecentSessions,
-    );
-  }
-
-  Widget _buildDisplayModeDropdown(BuildContext context) {
-    final l = AppLocalizations.of(context);
-    final label = switch (displayMode) {
-      SessionDisplayMode.first => l.sessionDisplayModeFirst,
-      SessionDisplayMode.last => l.sessionDisplayModeLast,
-      SessionDisplayMode.summary => l.sessionDisplayModeSummary,
-    };
-
-    return _ActionChip(
-      icon: Icons.visibility_outlined,
-      label: label,
-      tooltip: l.tooltipDisplayMode,
-      onTap: onToggleDisplayMode,
     );
   }
 
@@ -184,7 +142,6 @@ class _ActionChip extends StatelessWidget {
   final bool isActive;
 
   const _ActionChip({
-    super.key,
     required this.icon,
     required this.label,
     this.tooltip,

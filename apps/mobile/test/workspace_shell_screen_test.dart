@@ -635,7 +635,6 @@ void main() {
         ),
       );
       await _pumpUi(tester);
-
       shellKey.currentState!.openSettingsCenter();
       await _pumpUi(tester);
 
@@ -705,7 +704,6 @@ void main() {
         find.byKey(const ValueKey('embedded_gallery_back_button')),
       );
       await _pumpUi(tester);
-
       expect(
         find.text('Create a session from New in the left pane.'),
         findsOneWidget,
@@ -1459,7 +1457,6 @@ void main() {
         ),
       );
       await _pumpUi(tester);
-
       unawaited(
         showModalBottomSheet<void>(
           context: tester.element(find.byType(WorkspaceShellScreen)),
@@ -1516,16 +1513,18 @@ void main() {
         ),
       );
       await _pumpUi(tester);
-
       expect(find.text('Creating session...'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('running_session_stop_button')),
-        findsOneWidget,
+        findsNothing,
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey('running_session_stop_button')),
+      await tester.drag(
+        find.byKey(const ValueKey('running_session_session-1')),
+        const Offset(-180, 0),
       );
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.byIcon(Icons.stop_circle_outlined));
       await _pumpUi(tester);
 
       expect(find.text('Creating session...'), findsNothing);

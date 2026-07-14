@@ -42,6 +42,7 @@ void main() {
     bool isInputEmpty = true,
     bool isVoiceAvailable = false,
     bool isRecording = false,
+    bool isTranscribing = false,
     VoidCallback? onSend,
     VoidCallback? onStop,
     VoidCallback? onInterrupt,
@@ -71,6 +72,7 @@ void main() {
           isInputEmpty: isInputEmpty,
           isVoiceAvailable: isVoiceAvailable,
           isRecording: isRecording,
+          isTranscribing: isTranscribing,
           onSend: onSend ?? () {},
           onStop: onStop ?? () {},
           onInterrupt: onInterrupt ?? () {},
@@ -135,6 +137,23 @@ void main() {
       // Both voice (left toolbar) and send (right) are visible
       expect(find.byKey(const ValueKey('send_button')), findsOneWidget);
       expect(find.byKey(const ValueKey('voice_button')), findsOneWidget);
+    });
+
+    testWidgets('voice button shows progress while Whisper is transcribing', (
+      tester,
+    ) async {
+      var toggled = false;
+      await tester.pumpWidget(
+        buildSubject(
+          isVoiceAvailable: true,
+          isTranscribing: true,
+          onToggleVoice: () => toggled = true,
+        ),
+      );
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('voice_button')));
+      expect(toggled, isFalse);
     });
 
     testWidgets('send callback fires on button tap', (tester) async {

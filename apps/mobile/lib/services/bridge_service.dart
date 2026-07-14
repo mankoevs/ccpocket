@@ -12,6 +12,7 @@ import '../models/messages.dart';
 import '../models/offline_pending_action.dart';
 import '../utils/codex_plan_update.dart';
 import '../utils/network_endpoint.dart';
+import 'bridge_endpoint_discovery.dart';
 import 'bridge_service_base.dart';
 import 'session_runtime_store.dart';
 
@@ -319,6 +320,46 @@ class BridgeService implements BridgeServiceBase {
       host: uri.host,
       port: uri.hasPort ? uri.port : null,
     );
+  }
+
+  /// Transcribe recorded speech through the authenticated Bridge endpoint.
+  /// The provider credential remains on the Bridge machine and is never sent
+  /// to or stored by the mobile app.
+  Future<String> transcribeAudio(
+    Uint8List audioBytes, {
+    String localeId = 'ru-RU',
+  }) async {
+    final wsUrl = _lastUrl;
+    final baseUrl = httpBaseUrl;
+    if (wsUrl == null || baseUrl == null) {
+      throw StateError('Bridge is not connected');
+    }
+    final token = Uri.tryParse(wsUrl)?.queryParameters['token'];
+    if (token == null || token.isEmpty) {
+      throw StateError('Bridge authentication is unavailable');
+    }
+
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/transcribe'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'audio/wav',
+            'X-Speech-Locale': localeId,
+          },
+          body: audioBytes,
+        )
+        .timeout(const Duration(seconds: 90));
+    if (response.statusCode != 200) {
+      throw StateError('Speech transcription failed (${response.statusCode})');
+    }
+
+    final payload = jsonDecode(response.body);
+    final text = payload is Map<String, dynamic> ? payload['text'] : null;
+    if (text is! String || text.trim().isEmpty) {
+      throw StateError('Speech transcription returned no text');
+    }
+    return text.trim();
   }
 
   static const _prefKeyUrl = 'bridge_url';
@@ -808,9 +849,16 @@ class BridgeService implements BridgeServiceBase {
     _setBridgeConnectionState(BridgeConnectionState.reconnecting);
     _reconnectTimer = Timer(Duration(seconds: delay), () {
       if (_lastUrl != null && !_intentionalDisconnect) {
-        connect(_lastUrl!);
+        unawaited(_reconnectToBestEndpoint(_lastUrl!));
       }
     });
+  }
+
+  Future<void> _reconnectToBestEndpoint(String currentUrl) async {
+    final resolvedUrl = await BridgeEndpointDiscovery.resolve(currentUrl);
+    if (!_intentionalDisconnect && _lastUrl == currentUrl) {
+      connect(resolvedUrl);
+    }
   }
 
   @override
@@ -2119,7 +2167,7 @@ class BridgeService implements BridgeServiceBase {
     // legacy SharedPreferences value for backward compatibility.
     final effectiveApiKey = apiKey ?? prefs.getString(_prefKeyApiKey);
 
-    var connectUrl = url;
+    var connectUrl = await BridgeEndpointDiscovery.resolve(url);
     if (effectiveApiKey != null && effectiveApiKey.isNotEmpty) {
       final sep = connectUrl.contains('?') ? '&' : '?';
       connectUrl = '$connectUrl${sep}token=$effectiveApiKey';
@@ -2243,7 +2291,7 @@ class BridgeService implements BridgeServiceBase {
         _scheduleReconnect();
       }
     } else if (_connectionState == BridgeConnectionState.disconnected) {
-      connect(_lastUrl!);
+      unawaited(_reconnectToBestEndpoint(_lastUrl!));
     }
     // If reconnecting, do nothing — already in progress.
   }
