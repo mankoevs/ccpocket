@@ -779,6 +779,8 @@
   "tooltipPromptHistory": "프롬프트 기록 열기",
   "tooltipVoiceInput": "음성 입력 시작",
   "tooltipStopRecording": "녹음 중지",
+  "voiceTranscribing": "Whisper로 변환 중…",
+  "voiceTranscriptionFailed": "녹음을 변환하지 못했습니다. Bridge 연결을 확인하고 다시 시도하세요.",
   "tooltipSendMessage": "메시지 보내기",
   "tooltipRemoveImage": "이미지 제거",
   "tooltipClearDiff": "diff 선택 지우기",

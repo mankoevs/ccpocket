@@ -50,6 +50,7 @@ export function setupLaunchd(opts: SetupOptions): void {
   const allowedDirs = process.env.BRIDGE_ALLOWED_DIRS ?? "";
   const publicWsUrl =
     opts.publicWsUrl ?? process.env.BRIDGE_PUBLIC_WS_URL ?? "";
+  const groqApiKey = process.env.GROQ_API_KEY ?? "";
   const disableMdns = opts.disableMdns || process.env.BRIDGE_DISABLE_MDNS;
   const codexAppServerMode =
     opts.codexAppServerMode ?? process.env.BRIDGE_CODEX_APP_SERVER_MODE ?? "";
@@ -121,6 +122,12 @@ export function setupLaunchd(opts: SetupOptions): void {
     envBlock += `
         <key>BRIDGE_PUBLIC_WS_URL</key>
         <string>${publicWsUrl}</string>`;
+  }
+
+  if (groqApiKey) {
+    envBlock += `
+        <key>GROQ_API_KEY</key>
+        <string>${groqApiKey}</string>`;
   }
 
   if (disableMdns) {

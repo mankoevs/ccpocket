@@ -22,6 +22,7 @@ import {
 import { parseAllowedDirectories } from "./path-utils.js";
 import { parseBridgePort } from "./bridge-port.js";
 import { listenForStartup } from "./server-listen.js";
+import { SpeechTranscriptionHandler } from "./speech-transcription.js";
 
 function startupErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -81,6 +82,11 @@ export async function startServer() {
   );
   const MDNS_DISABLED = !!process.env.BRIDGE_DISABLE_MDNS;
   const mdns = MDNS_DISABLED ? undefined : new MdnsAdvertiser();
+  const speechTranscription = new SpeechTranscriptionHandler({
+    bridgeApiKey: API_KEY,
+    groqApiKey: process.env.GROQ_API_KEY,
+    model: process.env.GROQ_WHISPER_MODEL,
+  });
 
   // Initialize stores (async)
   galleryStore.init().then(() => {
@@ -128,7 +134,10 @@ export async function startServer() {
     // CORS headers for Flutter Web clients
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Authorization, Content-Type, X-Speech-Locale",
+    );
 
     if (req.method === "OPTIONS") {
       res.writeHead(204);
@@ -156,6 +165,8 @@ export async function startServer() {
       res.end(body);
       return;
     }
+
+    if (speechTranscription.handleRequest(req, res)) return;
 
     // Usage endpoint
     if (req.url === "/usage" && req.method === "GET") {

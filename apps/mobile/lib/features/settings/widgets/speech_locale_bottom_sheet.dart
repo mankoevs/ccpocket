@@ -9,6 +9,7 @@ import '../../../widgets/workspace_pane_chrome.dart';
 /// Available speech recognition locales.
 const speechLocales = <(String id, String label, String? subtitle)>[
   ('', '', null), // System default; label resolved via l10n
+  ('ru-RU', 'Russian', 'Русский'),
   ('ja-JP', 'Japanese', '日本語'),
   ('en-US', 'English (US)', null),
   ('en-GB', 'English (UK)', null),

@@ -1,15 +1,20 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 
 import '../features/settings/state/settings_cubit.dart';
+import '../l10n/app_localizations.dart';
+import '../services/bridge_service.dart';
 import '../services/voice_input_service.dart';
 
 /// Result record returned by [useVoiceInput].
 typedef VoiceInputResult = ({
   bool isAvailable,
   bool isRecording,
+  bool isTranscribing,
   void Function() toggle,
 });
 
@@ -23,6 +28,7 @@ VoiceInputResult useVoiceInput(TextEditingController controller) {
   final voiceInput = useMemoized(() => VoiceInputService());
   final isAvailable = useState(false);
   final isRecording = useState(false);
+  final isTranscribing = useState(false);
 
   useEffect(() {
     voiceInput.initialize().then((available) {
@@ -31,30 +37,59 @@ VoiceInputResult useVoiceInput(TextEditingController controller) {
     return voiceInput.dispose;
   }, const []);
 
-  void toggle() {
+  Future<void> toggleAsync() async {
+    if (isTranscribing.value) return;
     if (isRecording.value) {
-      voiceInput.stopListening();
       isRecording.value = false;
+      isTranscribing.value = true;
+      try {
+        final localeId = context.read<SettingsCubit>().state.speechLocaleId;
+        final text = await voiceInput.stopAndTranscribe(
+          bridge: context.read<BridgeService>(),
+          localeId: localeId.isNotEmpty ? localeId : 'ru-RU',
+        );
+        if (context.mounted && text.isNotEmpty) {
+          controller.value = composeVoiceInputValue(controller.value, text);
+        }
+      } catch (_) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                AppLocalizations.of(context).voiceTranscriptionFailed,
+              ),
+            ),
+          );
+        }
+      } finally {
+        if (context.mounted) isTranscribing.value = false;
+      }
     } else {
       HapticFeedback.mediumImpact();
-      isRecording.value = true;
-      final localeId = context.read<SettingsCubit>().state.speechLocaleId;
-      final baseInputValue = controller.value;
-      voiceInput.startListening(
-        onResult: (text, _) {
-          controller.value = composeVoiceInputValue(baseInputValue, text);
-        },
-        onDone: () {
-          if (context.mounted) isRecording.value = false;
-        },
-        localeId: localeId.isNotEmpty ? localeId : null,
-      );
+      try {
+        await voiceInput.startRecording();
+        if (context.mounted) isRecording.value = voiceInput.isRecording;
+      } catch (_) {
+        if (context.mounted) {
+          isRecording.value = false;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                AppLocalizations.of(context).voiceTranscriptionFailed,
+              ),
+            ),
+          );
+        }
+      }
     }
   }
+
+  void toggle() => unawaited(toggleAsync());
 
   return (
     isAvailable: isAvailable.value,
     isRecording: isRecording.value,
+    isTranscribing: isTranscribing.value,
     toggle: toggle,
   );
 }

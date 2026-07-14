@@ -1981,6 +1981,13 @@ class AppLocalizationsJa extends AppLocalizations {
   String get tooltipStopRecording => '録音を停止';
 
   @override
+  String get voiceTranscribing => 'Whisperで文字起こし中…';
+
+  @override
+  String get voiceTranscriptionFailed =>
+      '録音を文字起こしできませんでした。Bridge接続を確認してもう一度お試しください。';
+
+  @override
   String get tooltipSendMessage => 'メッセージを送信';
 
   @override

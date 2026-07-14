@@ -2053,6 +2053,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tooltipStopRecording => 'Stop recording';
 
   @override
+  String get voiceTranscribing => 'Transcribing with Whisper…';
+
+  @override
+  String get voiceTranscriptionFailed =>
+      'Whisper could not transcribe the recording. Check the Bridge connection and try again.';
+
+  @override
   String get tooltipSendMessage => 'Send message';
 
   @override

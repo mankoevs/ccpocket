@@ -3762,6 +3762,18 @@ abstract class AppLocalizations {
   /// **'録音を停止'**
   String get tooltipStopRecording;
 
+  /// No description provided for @voiceTranscribing.
+  ///
+  /// In ja, this message translates to:
+  /// **'Whisperで文字起こし中…'**
+  String get voiceTranscribing;
+
+  /// No description provided for @voiceTranscriptionFailed.
+  ///
+  /// In ja, this message translates to:
+  /// **'録音を文字起こしできませんでした。Bridge接続を確認してもう一度お試しください。'**
+  String get voiceTranscriptionFailed;
+
   /// No description provided for @tooltipSendMessage.
   ///
   /// In ja, this message translates to:

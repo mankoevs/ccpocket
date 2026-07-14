@@ -1959,6 +1959,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get tooltipStopRecording => '停止录音';
 
   @override
+  String get voiceTranscribing => '正在使用 Whisper 转写…';
+
+  @override
+  String get voiceTranscriptionFailed => '无法转写录音。请检查 Bridge 连接后重试。';
+
+  @override
   String get tooltipSendMessage => '发送消息';
 
   @override

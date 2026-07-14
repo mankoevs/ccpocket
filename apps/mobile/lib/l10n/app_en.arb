@@ -806,6 +806,8 @@
   "tooltipPromptHistory": "Open prompt history",
   "tooltipVoiceInput": "Start voice input",
   "tooltipStopRecording": "Stop recording",
+  "voiceTranscribing": "Transcribing with Whisper…",
+  "voiceTranscriptionFailed": "Whisper could not transcribe the recording. Check the Bridge connection and try again.",
   "tooltipSendMessage": "Send message",
   "tooltipRemoveImage": "Remove image",
   "tooltipClearDiff": "Clear diff selection",

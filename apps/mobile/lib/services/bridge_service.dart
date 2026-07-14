@@ -321,6 +321,46 @@ class BridgeService implements BridgeServiceBase {
     );
   }
 
+  /// Transcribe recorded speech through the authenticated Bridge endpoint.
+  /// The provider credential remains on the Bridge machine and is never sent
+  /// to or stored by the mobile app.
+  Future<String> transcribeAudio(
+    Uint8List audioBytes, {
+    String localeId = 'ru-RU',
+  }) async {
+    final wsUrl = _lastUrl;
+    final baseUrl = httpBaseUrl;
+    if (wsUrl == null || baseUrl == null) {
+      throw StateError('Bridge is not connected');
+    }
+    final token = Uri.tryParse(wsUrl)?.queryParameters['token'];
+    if (token == null || token.isEmpty) {
+      throw StateError('Bridge authentication is unavailable');
+    }
+
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/transcribe'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'audio/wav',
+            'X-Speech-Locale': localeId,
+          },
+          body: audioBytes,
+        )
+        .timeout(const Duration(seconds: 90));
+    if (response.statusCode != 200) {
+      throw StateError('Speech transcription failed (${response.statusCode})');
+    }
+
+    final payload = jsonDecode(response.body);
+    final text = payload is Map<String, dynamic> ? payload['text'] : null;
+    if (text is! String || text.trim().isEmpty) {
+      throw StateError('Speech transcription returned no text');
+    }
+    return text.trim();
+  }
+
   static const _prefKeyUrl = 'bridge_url';
   static const _prefKeyApiKey = 'bridge_api_key';
   static const _prefKeyOfflinePendingMessages =

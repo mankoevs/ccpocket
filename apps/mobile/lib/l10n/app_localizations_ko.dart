@@ -1994,6 +1994,13 @@ class AppLocalizationsKo extends AppLocalizations {
   String get tooltipStopRecording => '녹음 중지';
 
   @override
+  String get voiceTranscribing => 'Whisper로 변환 중…';
+
+  @override
+  String get voiceTranscriptionFailed =>
+      '녹음을 변환하지 못했습니다. Bridge 연결을 확인하고 다시 시도하세요.';
+
+  @override
   String get tooltipSendMessage => '메시지 보내기';
 
   @override

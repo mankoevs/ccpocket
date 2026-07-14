@@ -1020,6 +1020,7 @@ class ChatInputWithOverlays extends HookWidget {
                     !context.watch<SettingsCubit>().state.hideVoiceInput &&
                     voice.isAvailable,
                 isRecording: voice.isRecording,
+                isTranscribing: voice.isTranscribing,
                 onSend: sendMessage,
                 onStop: stopSession,
                 onInterrupt: interruptSession,
