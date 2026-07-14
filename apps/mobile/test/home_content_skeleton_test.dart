@@ -266,6 +266,55 @@ void main() {
       expect(find.text('test prompt for s2'), findsOneWidget);
     });
 
+    testWidgets('renders home chats as compact title-only rows', (
+      tester,
+    ) async {
+      final running = SessionInfo(
+        id: 'running-compact',
+        name: 'Active refactor',
+        projectPath: '/home/user/project-a',
+        status: 'running',
+        createdAt: '2025-01-01T12:00:00Z',
+        lastActivityAt: '2025-01-01T12:00:00Z',
+        gitBranch: 'feat/compact-list',
+        lastMessage: 'Editing the session card',
+      );
+      final recent = RecentSession(
+        sessionId: 'recent-compact',
+        name: 'Finished setup',
+        firstPrompt: 'Set up the entire project',
+        created: '2025-01-01T00:00:00Z',
+        modified: '2025-01-01T00:00:00Z',
+        gitBranch: 'main',
+        projectPath: '/home/user/project-a',
+        isSidechain: false,
+      );
+
+      await tester.pumpWidget(
+        _buildHomeContent(
+          sessions: [running],
+          recentSessions: [recent],
+          isInitialLoading: false,
+          cubit: cubit,
+          draftService: draftService,
+          revenueCatService: revenueCatService,
+          supportBannerService: supportBannerService,
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Active refactor'), findsOneWidget);
+      expect(find.text('Finished setup'), findsOneWidget);
+      expect(find.text('Editing the session card'), findsNothing);
+      expect(find.text('Set up the entire project'), findsNothing);
+      expect(find.text('feat/compact-list'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('compact_session_working')),
+        findsOneWidget,
+      );
+      expect(find.byIcon(Icons.visibility_outlined), findsNothing);
+    });
+
     testWidgets('shows only five sessions per project by default', (
       tester,
     ) async {

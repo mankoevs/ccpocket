@@ -624,6 +624,7 @@ class HomeContentState extends State<HomeContent> {
               ),
               child: RunningSessionCard(
                 session: session,
+                compact: true,
                 isUnseen: widget.unseenSessionIds.contains(session.id),
                 isSelected:
                     selectedSessionId == session.id &&
@@ -728,6 +729,7 @@ class HomeContentState extends State<HomeContent> {
           SessionFilterBar(
             displayMode: _displayMode,
             onToggleDisplayMode: _toggleDisplayMode,
+            showDisplayMode: false,
             groupRecentSessions: _groupRecentSessions,
             onToggleRecentGrouping: _toggleRecentGrouping,
             providerFilter: widget.providerFilter,
@@ -891,6 +893,7 @@ class _RecentSessionSlidable extends StatelessWidget {
       ),
       child: RecentSessionCard(
         session: session,
+        compact: true,
         displayMode: displayMode,
         isSelected: false,
         draftText: context.read<DraftService>().getDraft(session.sessionId),

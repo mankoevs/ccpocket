@@ -17,6 +17,7 @@ class SessionFilterBar extends StatelessWidget {
   final ValueChanged<String?> onProjectFilterChanged;
   final bool namedOnly;
   final VoidCallback onToggleNamed;
+  final bool showDisplayMode;
 
   const SessionFilterBar({
     super.key,
@@ -31,6 +32,7 @@ class SessionFilterBar extends StatelessWidget {
     required this.onProjectFilterChanged,
     required this.namedOnly,
     required this.onToggleNamed,
+    this.showDisplayMode = true,
   });
 
   @override
@@ -41,8 +43,10 @@ class SessionFilterBar extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildDisplayModeDropdown(context),
-          const SizedBox(width: 8),
+          if (showDisplayMode) ...[
+            _buildDisplayModeDropdown(context),
+            const SizedBox(width: 8),
+          ],
           _buildGroupingToggle(context),
           const SizedBox(width: 8),
           _buildProviderDropdown(context),
