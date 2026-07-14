@@ -80,7 +80,14 @@ Future<Machine?> findAutoConnectMachine(
 }) async {
   if (cubit == null) return null;
   await cubit.waitUntilLoaded(timeout: loadTimeout);
-  return cubit.findByHostPort(uri.host, uri.hasPort ? uri.port : 8765);
+  final port = uri.hasPort
+      ? uri.port
+      : switch (uri.scheme) {
+          'wss' || 'https' => 443,
+          'ws' || 'http' => 80,
+          _ => 8765,
+        };
+  return cubit.findByHostPort(uri.host, port);
 }
 
 /// Shorten absolute path by replacing $HOME with ~.
@@ -401,12 +408,14 @@ class _SessionListScreenState extends State<SessionListScreen>
       }
     });
     widget.deepLinkNotifier?.addListener(_onDeepLink);
-    if (widget.deepLinkNotifier?.value != null) {
+    final hasPendingDeepLink = widget.deepLinkNotifier?.value != null;
+    if (hasPendingDeepLink) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _onDeepLink();
       });
+    } else {
+      _loadPreferencesAndAutoConnect();
     }
-    _loadPreferencesAndAutoConnect();
 
     // Feed active session updates to the unseen tracker.
     final activeCubit = context.read<ActiveSessionsCubit>();

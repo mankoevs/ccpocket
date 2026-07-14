@@ -16,6 +16,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:app_links/app_links.dart';
+import 'package:auto_route/auto_route.dart' show DeepLink;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -283,6 +284,7 @@ class _CcpocketAppState extends State<CcpocketApp> {
   late final AppRouter _appRouter;
   bool _routerInitialized = false;
   bool _fcmHandlersInitialized = false;
+  bool _deepLinksInitialized = kIsWeb;
   late final AppLifecycleListener _lifecycleListener;
 
   @override
@@ -436,6 +438,10 @@ class _CcpocketAppState extends State<CcpocketApp> {
     } catch (e) {
       logger.error('[deep_link] uriLinkStream failed', e);
     }
+
+    if (mounted) {
+      setState(() => _deepLinksInitialized = true);
+    }
   }
 
   void _handleUri(Uri uri) {
@@ -462,6 +468,12 @@ class _CcpocketAppState extends State<CcpocketApp> {
 
   @override
   Widget build(BuildContext context) {
+    // Wait for the cold-start URI before constructing the home screen. This
+    // prevents its saved-server auto-connect from racing a connection link.
+    if (!_deepLinksInitialized) {
+      return const SizedBox.shrink();
+    }
+
     // Initialize router on first build (needs BlocProvider context)
     _initRouter();
 
@@ -486,6 +498,13 @@ class _CcpocketAppState extends State<CcpocketApp> {
           supportedLocales: AppLocalizations.supportedLocales,
           routerConfig: _appRouter.config(
             navigatorObservers: () => [SessionRouteObserver()],
+            deepLinkBuilder: (deepLink) {
+              if (kIsWeb) return deepLink;
+              if (!deepLink.initial) return DeepLink.none;
+              return DeepLink([
+                AdaptiveHomeRoute(deepLinkNotifier: _deepLinkNotifier),
+              ]);
+            },
           ),
           builder: (context, child) {
             final mediaQuery = MediaQuery.maybeOf(context);
