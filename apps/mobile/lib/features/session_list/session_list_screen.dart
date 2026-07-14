@@ -401,6 +401,11 @@ class _SessionListScreenState extends State<SessionListScreen>
       }
     });
     widget.deepLinkNotifier?.addListener(_onDeepLink);
+    if (widget.deepLinkNotifier?.value != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _onDeepLink();
+      });
+    }
     _loadPreferencesAndAutoConnect();
 
     // Feed active session updates to the unseen tracker.

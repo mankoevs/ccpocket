@@ -57,6 +57,10 @@ describe("setup-launchd", () => {
       expect(content).toContain("<key>BRIDGE_PORT</key>");
       expect(content).toContain("<string>8765</string>");
       expect(content).toContain("<key>BRIDGE_HOST</key>");
+      expect(content).toContain("<key>PATH</key>");
+      expect(content).toContain(
+        "<string>/Users/testuser/.local/bin:/Users/testuser/bin:/usr/bin:/opt/homebrew/bin:/usr/local/bin:/bin:/usr/sbin:/sbin</string>",
+      );
       expect(content).toContain(
         "<string>exec npx --yes @ccpocket/bridge@latest</string>",
       );
