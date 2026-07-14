@@ -5,8 +5,7 @@ import 'package:http/http.dart' as http;
 
 class BridgeEndpointDiscovery {
   static const _registryUrl =
-      'https://gist.githubusercontent.com/mankoevs/'
-      'd8154455bb0fa966be69102c571532c6/raw/ccpocket-bridge.json';
+      'https://api.github.com/gists/d8154455bb0fa966be69102c571532c6';
 
   static bool manages(String wsUrl) {
     final host = Uri.tryParse(wsUrl)?.host.toLowerCase();
@@ -32,10 +31,19 @@ class BridgeEndpointDiscovery {
               't': DateTime.now().millisecondsSinceEpoch.toString(),
             },
           );
-      final response = await httpClient.get(registry).timeout(timeout);
+      final response = await httpClient
+          .get(
+            registry,
+            headers: const {
+              'Accept': 'application/vnd.github+json',
+              'User-Agent': 'CC-Pocket',
+            },
+          )
+          .timeout(timeout);
       if (response.statusCode != 200) return savedUrl;
 
-      final payload = jsonDecode(response.body);
+      final responsePayload = jsonDecode(response.body);
+      final payload = _readDiscoveryPayload(responsePayload);
       if (payload is! Map<String, dynamic>) return savedUrl;
       final rawEndpoints = payload['endpoints'];
       if (rawEndpoints is! List) return savedUrl;
@@ -64,6 +72,19 @@ class BridgeEndpointDiscovery {
     } finally {
       if (ownClient) httpClient.close();
     }
+  }
+
+  static dynamic _readDiscoveryPayload(dynamic responsePayload) {
+    if (responsePayload is! Map<String, dynamic>) return null;
+    final files = responsePayload['files'];
+    if (files is Map<String, dynamic>) {
+      final file = files['ccpocket-bridge.json'];
+      if (file is! Map<String, dynamic>) return null;
+      final content = file['content'];
+      if (content is! String) return null;
+      return jsonDecode(content);
+    }
+    return responsePayload;
   }
 
   static Future<String?> _firstHealthy(

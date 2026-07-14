@@ -9,7 +9,8 @@ void main() {
     final client = MockClient((request) async {
       if (request.url == registry) {
         return http.Response(
-          '{"endpoints":["wss://backup.trycloudflare.com"]}',
+          '{"files":{"ccpocket-bridge.json":{"content":'
+          '"{\\"endpoints\\":[\\"wss://backup.trycloudflare.com\\"]}"}}}',
           200,
         );
       }
